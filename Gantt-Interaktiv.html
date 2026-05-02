@@ -57,6 +57,25 @@
   .topbar-uname{font-size:13px; font-weight:600; color:var(--ink-2)}
   .topbar-caret{font-size:9px; color:var(--mute); margin-left:2px}
 
+  /* Login Overlay */
+  .login-overlay{position:fixed; inset:0; z-index:99999; background:linear-gradient(160deg,#F4F6FB 0%,#E5ECF7 60%,#DCE5F2 100%); display:flex; align-items:center; justify-content:center; padding:24px; font-family:var(--font-body)}
+  .login-overlay.hidden{display:none}
+  .login-card{background:#fff; border-radius:20px; padding:40px 36px; max-width:440px; width:100%; box-shadow:0 16px 48px rgba(20,40,80,0.14)}
+  .login-logo{font-size:11px; letter-spacing:0.22em; color:#5BB0E6; font-weight:700; text-transform:uppercase; margin-bottom:14px}
+  .login-title{font-size:26px; font-weight:700; color:#1F2A3C; margin:0 0 8px; letter-spacing:-0.01em}
+  .login-sub{font-size:14px; color:#5C6678; margin:0 0 24px; line-height:1.55}
+  .login-card form{display:flex; flex-direction:column; gap:10px}
+  .login-card input[type=email]{padding:13px 16px; border:1.5px solid #E5E9F0; border-radius:12px; font-size:14px; font-family:inherit; outline:none; color:#1F2A3C; transition:border-color .15s, box-shadow .15s}
+  .login-card input[type=email]:focus{border-color:#5BB0E6; box-shadow:0 0 0 3px rgba(91,176,230,0.15)}
+  .login-card button{padding:13px 16px; border:none; border-radius:12px; background:#1F2A3C; color:#fff; font-size:14px; font-weight:600; font-family:inherit; cursor:pointer; transition:background .15s, transform .05s}
+  .login-card button:hover:not(:disabled){background:#2C3A52}
+  .login-card button:active:not(:disabled){transform:scale(0.99)}
+  .login-card button:disabled{opacity:0.6; cursor:wait}
+  .login-msg{margin-top:14px; padding:11px 14px; border-radius:10px; font-size:13px; line-height:1.5; display:none}
+  .login-msg.ok{display:block; background:#C7E9B0; color:#1A6334; border:1px solid #7CC97A}
+  .login-msg.err{display:block; background:#FBC4C0; color:#8E2B27; border:1px solid #EC8580}
+  .login-foot{margin-top:18px; font-size:11.5px; color:#8E96A6; text-align:center}
+
   /* ===== Page-Toolbar (Titel, Avatare, Pill-Buttons) ===== */
   .page-toolbar{display:flex; align-items:center; gap:14px; padding:26px 36px 18px; background:var(--bg); flex-wrap:wrap; flex:0 0 auto}
   .page-title{font-size:1.85rem; font-weight:700; color:var(--ink); letter-spacing:-0.02em; margin:0; font-family:var(--font-head)}
@@ -491,6 +510,20 @@
 </style>
 </head>
 <body>
+  <!-- Login-Overlay (wird per JS ein-/ausgeblendet) -->
+  <div id="loginOverlay" class="login-overlay">
+    <div class="login-card">
+      <div class="login-logo">HalloSkills</div>
+      <h1 class="login-title">Taskmanager</h1>
+      <p class="login-sub">Gib deine HalloSkills-Mail ein. Du bekommst einen Login-Link per Mail — einmal klicken, dann bist du drin.</p>
+      <form id="loginForm" autocomplete="on">
+        <input type="email" id="loginEmail" placeholder="vorname.nachname@halloskills.de" required autocomplete="email">
+        <button type="submit" id="loginSubmit">Login-Link per Mail anfordern</button>
+      </form>
+      <div class="login-msg" id="loginMsg"></div>
+      <div class="login-foot">Nur eingeladene Mail-Adressen können sich einloggen.</div>
+    </div>
+  </div>
 
 <div class="app-shell">
 
@@ -2895,11 +2928,94 @@ const SUPABASE_URL = 'https://gajjjlgisnpbviahdxbr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdhampqbGdpc25wYnZpYWhkeGJyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyNDM3NzMsImV4cCI6MjA5MjgxOTc3M30.loUqjq2mb9MoNBVnO2Z7E1rBBdzpXQhKKfH9p1Lq3a0';
 
 const SB_REST = SUPABASE_URL + '/rest/v1';
-const SB_HEADERS = {
-  'apikey': SUPABASE_ANON_KEY,
-  'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
-  'Content-Type': 'application/json'
-};
+const AUTH_STORE_KEY = 'hs_supabase_auth_v1';
+let _authToken = null;
+let _authUser  = null; // { email, id }
+
+function _authHeaders(){
+  return {
+    'apikey': SUPABASE_ANON_KEY,
+    'Authorization': 'Bearer ' + (_authToken || SUPABASE_ANON_KEY),
+    'Content-Type': 'application/json'
+  };
+}
+function _decodeJWT(tok){
+  try{
+    const p = tok.split('.');
+    if (p.length<2) return null;
+    return JSON.parse(atob(p[1].replace(/-/g,'+').replace(/_/g,'/')));
+  } catch(e){ return null; }
+}
+function _saveAuth(token){
+  const p = _decodeJWT(token);
+  if (!p || !p.email) return false;
+  _authToken = token;
+  _authUser  = { email: p.email, id: p.sub };
+  try { localStorage.setItem(AUTH_STORE_KEY, JSON.stringify({ token, ts: Date.now() })); } catch(e){}
+  return true;
+}
+function _loadStoredAuth(){
+  try{
+    const raw = localStorage.getItem(AUTH_STORE_KEY);
+    if (!raw) return false;
+    const obj = JSON.parse(raw);
+    const p = _decodeJWT(obj.token);
+    if (!p) return false;
+    if (p.exp && p.exp*1000 < Date.now()) { localStorage.removeItem(AUTH_STORE_KEY); return false; }
+    _authToken = obj.token;
+    _authUser  = { email: p.email, id: p.sub };
+    return true;
+  } catch(e){ return false; }
+}
+function _clearAuth(){
+  _authToken = null;
+  _authUser  = null;
+  try { localStorage.removeItem(AUTH_STORE_KEY); } catch(e){}
+}
+function _parseUrlHash(){
+  const h = window.location.hash.replace(/^#/, '');
+  if (!h) return null;
+  const p = new URLSearchParams(h);
+  const t = p.get('access_token');
+  if (!t) return null;
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  return t;
+}
+function _parseUrlError(){
+  const h = window.location.hash.replace(/^#/, '');
+  if (!h) return null;
+  const p = new URLSearchParams(h);
+  const e = p.get('error_description') || p.get('error');
+  if (!e) return null;
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  return e;
+}
+async function requestMagicLink(email){
+  const redirect = window.location.origin + window.location.pathname;
+  const r = await fetch(SUPABASE_URL + '/auth/v1/otp?redirect_to=' + encodeURIComponent(redirect), {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, create_user: false })
+  });
+  if (!r.ok){
+    const txt = await r.text().catch(()=>String(r.status));
+    throw new Error(r.status + ': ' + txt);
+  }
+}
+function logout(){
+  _clearAuth();
+  window.location.reload();
+}
+function updateUserDisplay(){
+  if (!_authUser) return;
+  const email = _authUser.email;
+  const before = email.split('@')[0];
+  const initials = before.split(/[._-]/).slice(0,2).map(s=>(s[0]||'').toUpperCase()).join('') || '?';
+  const displayName = before.split(/[._-]/).map(s=> (s[0]||'').toUpperCase() + s.slice(1)).join(' ');
+  const av = document.getElementById('meAvatar'); if (av) av.textContent = initials;
+  const un = document.querySelector('.topbar-uname'); if (un) un.textContent = displayName;
+  const btn = document.querySelector('.topbar-user'); if (btn) btn.setAttribute('title', email + ' — klicken zum Abmelden');
+}
 
 // DB ↔ App Mapping (DB nutzt snake_case + start_date/end_date weil "end" reserved word ist)
 function dbToApp(r){
@@ -2936,14 +3052,15 @@ function appToDb(t){
 }
 
 async function dbLoadAll(){
-  const r = await fetch(SB_REST + '/tasks?select=*&order=id.asc', { headers: SB_HEADERS });
+  const r = await fetch(SB_REST + '/tasks?select=*&order=id.asc', { headers: _authHeaders() });
+  if (r.status === 401){ _clearAuth(); throw new Error('Auth abgelaufen'); }
   if (!r.ok) throw new Error('Supabase load fehlgeschlagen: ' + r.status + ' ' + (await r.text()));
   return (await r.json()).map(dbToApp);
 }
 async function dbUpsert(t){
   const r = await fetch(SB_REST + '/tasks?on_conflict=id', {
     method: 'POST',
-    headers: { ...SB_HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+    headers: { ..._authHeaders(), 'Prefer': 'resolution=merge-duplicates,return=minimal' },
     body: JSON.stringify(appToDb(t))
   });
   if (!r.ok) console.error('[Supabase] upsert fehlgeschlagen:', r.status, await r.text());
@@ -2951,7 +3068,7 @@ async function dbUpsert(t){
 async function dbDelete(id){
   const r = await fetch(SB_REST + '/tasks?id=eq.' + encodeURIComponent(id), {
     method: 'DELETE',
-    headers: SB_HEADERS
+    headers: _authHeaders()
   });
   if (!r.ok) console.error('[Supabase] delete fehlgeschlagen:', r.status, await r.text());
 }
@@ -3066,7 +3183,10 @@ function subscribeRealtime(){
       ws.send(JSON.stringify({
         topic: 'realtime:public:tasks',
         event: 'phx_join',
-        payload: { config: { postgres_changes: [{ event: '*', schema: 'public', table: 'tasks' }] } },
+        payload: {
+          config: { postgres_changes: [{ event: '*', schema: 'public', table: 'tasks' }] },
+          access_token: _authToken || SUPABASE_ANON_KEY
+        },
         ref: '1'
       }));
       hbTimer = setInterval(()=>{
@@ -3129,12 +3249,88 @@ window.addEventListener('focus', ()=>{
 });
 
 /* ===========================================================
+   AUTH-GATE: Login-Form + Init nur nach erfolgreicher Auth
+=========================================================== */
+function showLoginOverlay(errMsg){
+  const ov = document.getElementById('loginOverlay');
+  if (ov) ov.classList.remove('hidden');
+  if (errMsg){
+    const m = document.getElementById('loginMsg');
+    if (m){ m.className = 'login-msg err'; m.textContent = errMsg; }
+  }
+}
+function hideLoginOverlay(){
+  const ov = document.getElementById('loginOverlay');
+  if (ov) ov.classList.add('hidden');
+}
+
+// Login-Form-Handler
+document.getElementById('loginForm').addEventListener('submit', async (e)=>{
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+  const btn = document.getElementById('loginSubmit');
+  const msg = document.getElementById('loginMsg');
+  if (!email){ return; }
+  btn.disabled = true; btn.textContent = 'Sende Link…';
+  msg.className = 'login-msg'; msg.textContent = '';
+  try {
+    await requestMagicLink(email);
+    msg.className = 'login-msg ok';
+    msg.textContent = 'Link an ' + email + ' geschickt. Schau in deinen Posteingang (auch Spam-Ordner) und klick auf den Link in der Mail.';
+    btn.disabled = false; btn.textContent = 'Link erneut senden';
+  } catch(err){
+    msg.className = 'login-msg err';
+    const txt = String(err.message || err);
+    if (txt.includes('400') || txt.toLowerCase().includes('not_found') || txt.toLowerCase().includes('signups not allowed') || txt.toLowerCase().includes('not authorized')){
+      msg.textContent = 'Diese Mail ist nicht eingeladen. Bitte wende dich an die Administration.';
+    } else if (txt.includes('429') || txt.toLowerCase().includes('rate')){
+      msg.textContent = 'Zu viele Anfragen — bitte ein paar Minuten warten und nochmal versuchen.';
+    } else {
+      msg.textContent = 'Login fehlgeschlagen: ' + txt;
+    }
+    btn.disabled = false; btn.textContent = 'Login-Link per Mail anfordern';
+  }
+});
+
+// Topbar-User → Logout
+(function wireLogout(){
+  const btn = document.querySelector('.topbar-user');
+  if (!btn) return;
+  btn.addEventListener('click', ()=>{
+    if (!_authUser) return;
+    if (confirm('Möchtest du dich abmelden?')) logout();
+  });
+})();
+
+/* ===========================================================
    INIT
 =========================================================== */
-refreshFilterButton();
-setMode('board');
-// Asynchron aus Supabase nachladen + Realtime starten
-reloadFromDB().then(()=>{ subscribeRealtime(); });
+(function init(){
+  // 1) URL-Hash auf Magic-Link-Token oder Auth-Fehler prüfen
+  const urlErr = _parseUrlError();
+  const hashTok = _parseUrlHash();
+  let authed = false;
+  if (hashTok) authed = _saveAuth(hashTok);
+  if (!authed) authed = _loadStoredAuth();
+
+  if (!authed){
+    // Login-Bildschirm zeigen, App nicht laden
+    showLoginOverlay(urlErr ? ('Login-Link ungültig oder abgelaufen: ' + urlErr) : null);
+    return;
+  }
+
+  // Eingeloggt → App initialisieren
+  hideLoginOverlay();
+  updateUserDisplay();
+  refreshFilterButton();
+  setMode('board');
+  reloadFromDB().then(()=>{ subscribeRealtime(); }).catch(err=>{
+    console.error('[Init] Fehler beim Laden:', err);
+    if (String(err.message||err).includes('Auth abgelaufen')){
+      showLoginOverlay('Deine Session ist abgelaufen. Bitte erneut einloggen.');
+    }
+  });
+})();
 </script>
 </body>
 </html>

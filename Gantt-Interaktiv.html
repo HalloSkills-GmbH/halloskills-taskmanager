@@ -2928,9 +2928,12 @@ const SUPABASE_URL = 'https://gajjjlgisnpbviahdxbr.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdhampqbGdpc25wYnZpYWhkeGJyIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcyNDM3NzMsImV4cCI6MjA5MjgxOTc3M30.loUqjq2mb9MoNBVnO2Z7E1rBBdzpXQhKKfH9p1Lq3a0';
 
 const SB_REST = SUPABASE_URL + '/rest/v1';
-const AUTH_STORE_KEY = 'hs_supabase_auth_v1';
-let _authToken = null;
-let _authUser  = null; // { email, id }
+const AUTH_STORE_KEY = 'hs_supabase_auth_v2';
+let _authToken        = null;
+let _authRefreshToken = null;
+let _authExpiresAt    = null;       // unix seconds
+let _authUser         = null;       // { email, id }
+let _refreshTimer     = null;
 
 function _authHeaders(){
   return {
@@ -2946,40 +2949,98 @@ function _decodeJWT(tok){
     return JSON.parse(atob(p[1].replace(/-/g,'+').replace(/_/g,'/')));
   } catch(e){ return null; }
 }
-function _saveAuth(token){
+function _saveAuth(token, refreshToken, expiresAt){
   const p = _decodeJWT(token);
   if (!p || !p.email) return false;
-  _authToken = token;
-  _authUser  = { email: p.email, id: p.sub };
-  try { localStorage.setItem(AUTH_STORE_KEY, JSON.stringify({ token, ts: Date.now() })); } catch(e){}
+  _authToken        = token;
+  _authRefreshToken = refreshToken || _authRefreshToken || null;
+  _authExpiresAt    = Number(expiresAt) || p.exp || null;
+  _authUser         = { email: p.email, id: p.sub };
+  try {
+    localStorage.setItem(AUTH_STORE_KEY, JSON.stringify({
+      token,
+      refresh_token: _authRefreshToken,
+      expires_at: _authExpiresAt,
+      ts: Date.now()
+    }));
+  } catch(e){}
+  _scheduleRefresh();
+  // Login zählt als Aktivität
+  if (typeof _markActivity === 'function') _markActivity();
   return true;
 }
 function _loadStoredAuth(){
+  // Returns true (gut), 'expired' (refresh nötig), oder false (neu einloggen)
   try{
     const raw = localStorage.getItem(AUTH_STORE_KEY);
     if (!raw) return false;
     const obj = JSON.parse(raw);
     const p = _decodeJWT(obj.token);
     if (!p) return false;
-    if (p.exp && p.exp*1000 < Date.now()) { localStorage.removeItem(AUTH_STORE_KEY); return false; }
-    _authToken = obj.token;
-    _authUser  = { email: p.email, id: p.sub };
+    _authToken        = obj.token;
+    _authRefreshToken = obj.refresh_token || null;
+    _authExpiresAt    = Number(obj.expires_at) || p.exp || null;
+    _authUser         = { email: p.email, id: p.sub };
+    const now = Math.floor(Date.now()/1000);
+    if (_authExpiresAt && _authExpiresAt <= now){
+      // Access-Token abgelaufen — Refresh versuchen, falls Refresh-Token vorhanden
+      return _authRefreshToken ? 'expired' : false;
+    }
+    _scheduleRefresh();
     return true;
   } catch(e){ return false; }
 }
 function _clearAuth(){
-  _authToken = null;
-  _authUser  = null;
+  _authToken        = null;
+  _authRefreshToken = null;
+  _authExpiresAt    = null;
+  _authUser         = null;
+  if (_refreshTimer){ clearTimeout(_refreshTimer); _refreshTimer = null; }
   try { localStorage.removeItem(AUTH_STORE_KEY); } catch(e){}
 }
 function _parseUrlHash(){
+  // Parsed Magic-Link-Callback: #access_token=...&refresh_token=...&expires_at=...
   const h = window.location.hash.replace(/^#/, '');
   if (!h) return null;
   const p = new URLSearchParams(h);
   const t = p.get('access_token');
   if (!t) return null;
+  const out = {
+    access_token: t,
+    refresh_token: p.get('refresh_token') || null,
+    expires_at: p.get('expires_at') || null
+  };
   history.replaceState(null, '', window.location.pathname + window.location.search);
-  return t;
+  return out;
+}
+
+async function refreshSession(){
+  if (!_authRefreshToken) return false;
+  try{
+    const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
+      method: 'POST',
+      headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token: _authRefreshToken })
+    });
+    if (!r.ok){
+      // Refresh-Token ist tot → User muss neu einloggen
+      _clearAuth();
+      return false;
+    }
+    const d = await r.json();
+    return _saveAuth(d.access_token, d.refresh_token || _authRefreshToken, d.expires_at);
+  } catch(e){
+    console.warn('[Auth] refresh fehlgeschlagen:', e);
+    return false;
+  }
+}
+function _scheduleRefresh(){
+  if (_refreshTimer){ clearTimeout(_refreshTimer); _refreshTimer = null; }
+  if (!_authExpiresAt || !_authRefreshToken) return;
+  // 60 Sek vor Ablauf refreshen (mind. 5 Sek warten)
+  const ms = (_authExpiresAt * 1000) - Date.now() - 60_000;
+  const delay = Math.max(5_000, ms);
+  _refreshTimer = setTimeout(()=>{ refreshSession().catch(()=>{}); }, delay);
 }
 function _parseUrlError(){
   const h = window.location.hash.replace(/^#/, '');
@@ -3002,10 +3063,49 @@ async function requestMagicLink(email){
     throw new Error(r.status + ': ' + txt);
   }
 }
-function logout(){
+async function logout(){
+  // Server-seitig ausloggen (revoked refresh-token + alle Sessions)
+  if (_authToken){
+    try {
+      await fetch(SUPABASE_URL + '/auth/v1/logout?scope=global', {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + _authToken,
+          'Content-Type': 'application/json'
+        }
+      });
+    } catch(e) { /* ignore — wir clearen lokal in jedem Fall */ }
+  }
   _clearAuth();
+  try { localStorage.removeItem(ACTIVITY_KEY); } catch(e){}
   window.location.reload();
 }
+
+/* === Inaktivitäts-Timeout: nach 7 Tagen ohne Aktivität automatisch abmelden === */
+const ACTIVITY_KEY = 'hs_last_activity_v1';
+const INACTIVITY_LIMIT_MS = 7 * 24 * 60 * 60 * 1000; // 7 Tage
+
+function _markActivity(){
+  try { localStorage.setItem(ACTIVITY_KEY, String(Date.now())); } catch(e){}
+}
+function _isInactiveTooLong(){
+  try {
+    const last = Number(localStorage.getItem(ACTIVITY_KEY) || 0);
+    if (!last) return false; // keine Vorgeschichte → ok
+    return (Date.now() - last) > INACTIVITY_LIMIT_MS;
+  } catch(e){ return false; }
+}
+let _activityTimer = null;
+function _scheduleActivityWrite(){
+  if (_activityTimer) return;
+  _activityTimer = setTimeout(()=>{
+    _markActivity();
+    _activityTimer = null;
+  }, 60_000); // throttle: maximal 1× pro Minute schreiben
+}
+document.addEventListener('mousedown', _scheduleActivityWrite, { passive:true });
+document.addEventListener('keydown',   _scheduleActivityWrite, { passive:true });
 function updateUserDisplay(){
   if (!_authUser) return;
   const email = _authUser.email;
@@ -3229,11 +3329,21 @@ function subscribeRealtime(){
 }
 
 // Bei Tab-Fokus zusätzlich neu laden (Fallback falls Realtime mal nicht durchkommt)
-window.addEventListener('focus', ()=>{
+window.addEventListener('focus', async ()=>{
   if (_syncSuspended) return;
-  dbLoadAll().then(fromDB=>{
+  if (!_authToken) return;
+  // Falls Access-Token abgelaufen oder bald (innerhalb 30 Sek) abläuft → vorab refreshen
+  const now = Math.floor(Date.now()/1000);
+  if (_authExpiresAt && _authExpiresAt - 30 <= now){
+    const ok = await refreshSession();
+    if (!ok){
+      showLoginOverlay('Deine Session ist abgelaufen. Bitte erneut einloggen.');
+      return;
+    }
+  }
+  try{
+    const fromDB = await dbLoadAll();
     if (!fromDB.length) return;
-    // Nur ersetzen, wenn sich was geändert hat
     const newHash = JSON.stringify(fromDB.map(t=>[t.id, _hashTask(t)]));
     const oldHash = JSON.stringify(tasks.map(t=>[t.id, _hashTask(t)]));
     if (newHash === oldHash) return;
@@ -3245,7 +3355,7 @@ window.addEventListener('focus', ()=>{
     else if (mode === 'gantt') render();
     else if (mode === 'calendar') renderCalendar();
     else if (mode === 'dashboard' && typeof renderDashboard === 'function') renderDashboard();
-  }).catch(()=>{});
+  } catch(e){ /* ignore — Realtime/Sync übernimmt beim nächsten Mal */ }
 });
 
 /* ===========================================================
@@ -3296,40 +3406,67 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
 (function wireLogout(){
   const btn = document.querySelector('.topbar-user');
   if (!btn) return;
-  btn.addEventListener('click', ()=>{
+  btn.addEventListener('click', async ()=>{
     if (!_authUser) return;
-    if (confirm('Möchtest du dich abmelden?')) logout();
+    if (confirm('Möchtest du dich abmelden?')) await logout();
   });
 })();
 
 /* ===========================================================
    INIT
 =========================================================== */
-(function init(){
+(async function init(){
   // 1) URL-Hash auf Magic-Link-Token oder Auth-Fehler prüfen
-  const urlErr = _parseUrlError();
+  const urlErr  = _parseUrlError();
   const hashTok = _parseUrlHash();
   let authed = false;
-  if (hashTok) authed = _saveAuth(hashTok);
-  if (!authed) authed = _loadStoredAuth();
+  if (hashTok){
+    authed = _saveAuth(hashTok.access_token, hashTok.refresh_token, hashTok.expires_at);
+  }
+  if (!authed){
+    // Vor dem Wiederherstellen prüfen: zu lange inaktiv? Dann zwangsweise neu einloggen.
+    if (_isInactiveTooLong()){
+      _clearAuth();
+      try { localStorage.removeItem(ACTIVITY_KEY); } catch(e){}
+      showLoginOverlay('Du warst länger als 7 Tage nicht aktiv — bitte erneut einloggen.');
+      return;
+    }
+    const stored = _loadStoredAuth();
+    if (stored === true) authed = true;
+    else if (stored === 'expired'){
+      // Access-Token abgelaufen, aber Refresh-Token da → still erneuern
+      authed = await refreshSession();
+    }
+  }
 
   if (!authed){
-    // Login-Bildschirm zeigen, App nicht laden
     showLoginOverlay(urlErr ? ('Login-Link ungültig oder abgelaufen: ' + urlErr) : null);
     return;
   }
+  // Erfolgreich eingeloggt → Aktivität markieren (zählt als „benutzt")
+  _markActivity();
 
   // Eingeloggt → App initialisieren
   hideLoginOverlay();
   updateUserDisplay();
   refreshFilterButton();
   setMode('board');
-  reloadFromDB().then(()=>{ subscribeRealtime(); }).catch(err=>{
+  try {
+    await reloadFromDB();
+    subscribeRealtime();
+  } catch(err){
     console.error('[Init] Fehler beim Laden:', err);
     if (String(err.message||err).includes('Auth abgelaufen')){
-      showLoginOverlay('Deine Session ist abgelaufen. Bitte erneut einloggen.');
+      // Versuch ein letztes Refresh, dann erst Login zeigen
+      const ok = await refreshSession();
+      if (ok){
+        try { await reloadFromDB(); subscribeRealtime(); }
+        catch(e2){ showLoginOverlay('Deine Session ist abgelaufen. Bitte erneut einloggen.'); }
+      } else {
+        showLoginOverlay('Deine Session ist abgelaufen. Bitte erneut einloggen.');
+      }
     }
-  });
+  }
 })();
 </script>
 </body>

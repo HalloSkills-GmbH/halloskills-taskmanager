@@ -3,11 +3,15 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, useTransition } from "react";
 import {
+  setTasksBuiltinColumnsHidden,
+} from "@/app/(app)/main-table/actions";
+import {
   parseTaskListFilters,
   serializeTaskListFilters,
   taskListFiltersActive,
   type TaskListFilters,
 } from "@/lib/tasks/filters";
+import { TASKS_PERSISTABLE_BUILTIN_KEYS } from "@/lib/tasks/main-table-columns";
 import type { TaskCustomColumnRow } from "@/types/main-table";
 import type { TaskRow } from "@/types/tasks";
 import type { MainTableGroupBy, MainTableTaskSort } from "./MainTableView";
@@ -21,14 +25,41 @@ export function TasksPageClient({
   layoutSyncKey,
   departmentId = null,
   tasksPathPrefix = "/tasks",
+  boardId = null,
+  allowedProjectIds,
+  defaultHiddenColumnKeys,
+  hiddenColumnsStorageKey: hiddenColumnsStorageKeyProp,
+  serverBuiltinColumnsHidden,
+  serverBuiltinColumnLabels,
+  departmentDefaultBoardId = null,
+  initialColumnOrder = null,
+  initialGroupSort = null,
 }: {
   initialTasks: TaskRow[];
   initialCustomColumns: TaskCustomColumnRow[];
   initialMergedWidths: Record<string, number>;
   layoutSyncKey: string;
   departmentId?: string | null;
-  /** Basis-Pfad für Filter-Navigation (z. B. `/d/slug/tasks`). */
+  /** Basis-Pfad für Filter-Navigation (z. B. `/d/slug/tasks` oder Board-URL). */
   tasksPathPrefix?: string;
+  /** Setzt `tableStorageScopeSuffix` auf der Tabelle (Board-ID). */
+  boardId?: string | null;
+  /** Nur Zeilen mit project_id in dieser Liste (Board). */
+  allowedProjectIds?: string[];
+  /** Wenn kein localStorage-Eintrag: diese Spalten ausblenden. */
+  defaultHiddenColumnKeys?: string[];
+  /** Eigener Schlüssel für Spalten-Sichtbarkeit (z. B. pro Board). */
+  hiddenColumnsStorageKey?: string;
+  /** Workspace-weit gespeicherte ausgeblendete feste Spalten (ohne Board-Ansicht). */
+  serverBuiltinColumnsHidden?: string[];
+  /** Gespeicherte Überschriften fester Spalten. */
+  serverBuiltinColumnLabels?: Record<string, string>;
+  /** Erstes Department-Board (`department_boards.id`) für Status-Konfiguration auf der Abteilungs-Aufgaben-Seite. */
+  departmentDefaultBoardId?: string | null;
+  /** Aus main_table_layout (Spaltenreihenfolge). */
+  initialColumnOrder?: string[] | null;
+  /** Aus main_table_layout (Gruppen-Reihenfolge). */
+  initialGroupSort?: { topic?: string[]; status?: string[] } | null;
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -42,34 +73,88 @@ export function TasksPageClient({
   const [groupBy, setGroupBy] = useState<MainTableGroupBy>("topic");
   const [taskSort, setTaskSort] = useState<MainTableTaskSort>("none");
 
-  const hideColStorageKey = `main-tasks-hidden-${departmentId ?? "all"}`;
-  const [hiddenColumnKeys, setHiddenColumnKeys] = useState<string[]>([]);
+  const hideColStorageKey =
+    hiddenColumnsStorageKeyProp ?? `main-tasks-hidden-${departmentId ?? "all"}`;
+  const [hiddenColumnKeys, setHiddenColumnKeys] = useState<string[]>(() =>
+    boardId ? defaultHiddenColumnKeys ?? [] : serverBuiltinColumnsHidden ?? [],
+  );
 
   useEffect(() => {
-    setDraft(applied);
-  }, [applied]);
+    if (boardId) {
+      try {
+        const raw = localStorage.getItem(hideColStorageKey);
+        if (raw) {
+          const parsed = JSON.parse(raw) as unknown;
+          if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
+            setHiddenColumnKeys(parsed);
+            return;
+          }
+        }
+        setHiddenColumnKeys(defaultHiddenColumnKeys ?? []);
+      } catch {
+        setHiddenColumnKeys(defaultHiddenColumnKeys ?? []);
+      }
+      return;
+    }
 
-  useEffect(() => {
     try {
       const raw = localStorage.getItem(hideColStorageKey);
+      let customHidden: string[] = [];
       if (raw) {
         const parsed = JSON.parse(raw) as unknown;
         if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
-          setHiddenColumnKeys(parsed);
+          customHidden = parsed.filter((x) => x.startsWith("custom:"));
         }
+      }
+      const builtins = serverBuiltinColumnsHidden ?? [];
+      setHiddenColumnKeys([...new Set([...builtins, ...customHidden])]);
+    } catch {
+      setHiddenColumnKeys([...(serverBuiltinColumnsHidden ?? [])]);
+    }
+  }, [boardId, hideColStorageKey, serverBuiltinColumnsHidden, defaultHiddenColumnKeys]);
+
+  useEffect(() => {
+    try {
+      if (boardId) {
+        localStorage.setItem(hideColStorageKey, JSON.stringify(hiddenColumnKeys));
+      } else {
+        const customOnly = hiddenColumnKeys.filter((k) => k.startsWith("custom:"));
+        localStorage.setItem(hideColStorageKey, JSON.stringify(customOnly));
       }
     } catch {
       /* ignore */
     }
-  }, [hideColStorageKey]);
+  }, [boardId, hideColStorageKey, hiddenColumnKeys]);
+
+  const builtinSignature = useCallback(
+    (keys: string[]) =>
+      [...new Set(keys.filter((k) => TASKS_PERSISTABLE_BUILTIN_KEYS.has(k)))].sort().join("|"),
+    [],
+  );
+
+  const handleHiddenColumnKeysChange = useCallback(
+    (next: string[]) => {
+      if (boardId) {
+        setHiddenColumnKeys(next);
+        return;
+      }
+      setHiddenColumnKeys((prev) => {
+        if (builtinSignature(prev) !== builtinSignature(next)) {
+          void setTasksBuiltinColumnsHidden({
+            hiddenKeys: [...new Set(next.filter((k) => TASKS_PERSISTABLE_BUILTIN_KEYS.has(k)))],
+          }).then((r) => {
+            if (r.ok) router.refresh();
+          });
+        }
+        return next;
+      });
+    },
+    [boardId, builtinSignature, router],
+  );
 
   useEffect(() => {
-    try {
-      localStorage.setItem(hideColStorageKey, JSON.stringify(hiddenColumnKeys));
-    } catch {
-      /* ignore */
-    }
-  }, [hideColStorageKey, hiddenColumnKeys]);
+    setDraft(applied);
+  }, [applied]);
 
   const activeFilters = useMemo(() => taskListFiltersActive(applied), [applied]);
 
@@ -84,6 +169,7 @@ export function TasksPageClient({
     <div className="hs-page mx-auto max-w-[1680px]">
       <TasksMonoToolbar
         departmentId={departmentId}
+        defaultProjectIdForNewTasks={allowedProjectIds?.[0] ?? null}
         draft={draft}
         setDraft={setDraft}
         applyFilters={applyFilters}
@@ -96,7 +182,7 @@ export function TasksPageClient({
         taskSort={taskSort}
         onTaskSortChange={setTaskSort}
         hiddenColumnKeys={hiddenColumnKeys}
-        onHiddenColumnKeysChange={setHiddenColumnKeys}
+        onHiddenColumnKeysChange={handleHiddenColumnKeysChange}
         initialCustomColumns={initialCustomColumns}
       />
 
@@ -113,8 +199,16 @@ export function TasksPageClient({
           groupBy={groupBy}
           onGroupByChange={setGroupBy}
           hiddenColumnKeys={hiddenColumnKeys}
+          onHiddenColumnKeysChange={handleHiddenColumnKeysChange}
+          builtinColumnLabels={serverBuiltinColumnLabels ?? {}}
           taskSort={taskSort}
           suppressBuiltInGroupUi
+          restrictProjectIds={allowedProjectIds}
+          tableStorageScopeSuffix={boardId ?? undefined}
+          defaultProjectIdForNewTasks={allowedProjectIds?.[0] ?? null}
+          initialColumnOrder={initialColumnOrder ?? null}
+          initialGroupSort={initialGroupSort ?? null}
+          statusConfigBoardId={boardId ?? departmentDefaultBoardId ?? null}
         />
       </div>
     </div>

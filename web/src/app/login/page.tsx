@@ -1,11 +1,21 @@
 import { LoginForm } from "@/components/auth/LoginForm";
 
+async function resolveSearchParams(
+  raw: Promise<{ error?: string }> | { error?: string } | undefined,
+): Promise<{ error?: string }> {
+  if (raw == null) return {};
+  if (typeof raw === "object" && "then" in raw && typeof (raw as Promise<unknown>).then === "function") {
+    return ((await raw) ?? {}) as { error?: string };
+  }
+  return raw as { error?: string };
+}
+
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams?: Promise<{ error?: string }> | { error?: string };
 }) {
-  const sp = await searchParams;
+  const sp = await resolveSearchParams(searchParams);
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-gradient-to-br from-[var(--bg)] via-[var(--bg-2)] to-[var(--surface-2)] px-4 py-12">
       {sp.error === "auth" ? (

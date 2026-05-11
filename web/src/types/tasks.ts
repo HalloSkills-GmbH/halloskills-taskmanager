@@ -21,4 +21,6 @@ export type TaskRow = {
   department_id?: string | null;
   /** Optional: Projekt innerhalb eines Board-Kanban (Migration 007). */
   project_id?: string | null;
+  /** Sortierung unter gleichem parent_id (Migration 013). */
+  sort_order?: number | null;
 };

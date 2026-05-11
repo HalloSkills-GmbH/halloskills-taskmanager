@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { TasksPageClient } from "@/components/tasks/TasksPageClient";
+import { normalizeLayoutHidden, normalizeLayoutLabels } from "@/lib/tasks/main-table-layout-shared";
 import { mergeLayoutWidths } from "@/lib/tasks/main-table-columns";
 import { createClient } from "@/lib/supabase/server";
 import type { MainTableLayoutRow, TaskCustomColumnRow } from "@/types/main-table";
@@ -23,6 +24,8 @@ export default async function TasksPage() {
       : undefined;
   const merged = mergeLayoutWidths("tasks", storedWidths, customCols);
   const layoutSyncKey = `${layoutRow?.updated_at ?? "0"}:${customCols.map((c) => c.id).join(",")}`;
+  const serverBuiltinColumnsHidden = normalizeLayoutHidden(layoutRow?.builtin_columns_hidden);
+  const serverBuiltinColumnLabels = normalizeLayoutLabels(layoutRow?.builtin_column_labels);
 
   return (
     <>
@@ -53,6 +56,10 @@ export default async function TasksPage() {
           initialCustomColumns={customCols}
           initialMergedWidths={merged}
           layoutSyncKey={layoutSyncKey}
+          serverBuiltinColumnsHidden={serverBuiltinColumnsHidden}
+          serverBuiltinColumnLabels={serverBuiltinColumnLabels}
+          initialColumnOrder={layoutRow?.column_order ?? null}
+          initialGroupSort={layoutRow?.group_sort ?? null}
         />
       </Suspense>
     </>

@@ -19,6 +19,7 @@ export const taskUpdateSchema = z
     custom_fields: z.record(z.string(), z.unknown()).optional(),
     department_id: z.union([z.string().uuid(), z.null()]).optional(),
     project_id: z.union([z.string().uuid(), z.null()]).optional(),
+    sort_order: z.coerce.number().int().min(0).optional(),
   })
   .strict();
 
@@ -43,4 +44,5 @@ export const taskInsertSchema = z.object({
   custom_fields: z.record(z.string(), z.unknown()).optional(),
   department_id: z.string().uuid().nullable().optional(),
   project_id: z.string().uuid().nullable().optional(),
+  sort_order: z.coerce.number().int().min(0).optional(),
 });

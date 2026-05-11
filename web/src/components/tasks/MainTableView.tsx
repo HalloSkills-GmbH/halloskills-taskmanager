@@ -1,11 +1,19 @@
 "use client";
 
-import { addTaskCustomColumn } from "@/app/(app)/main-table/actions";
-import { deleteTaskRow, insertTaskRow, updateTaskFields } from "@/app/(app)/okrs/actions";
+import {
+  addTaskCustomColumn,
+  deleteTaskCustomColumn,
+  renameTaskCustomColumn,
+  saveMainTableColumnOrder,
+  saveMainTableGroupSort,
+  setTasksBuiltinColumnLabel,
+} from "@/app/(app)/main-table/actions";
+import { deleteTaskRow, insertTaskRow, reorderTaskRows, updateTaskFields } from "@/app/(app)/okrs/actions";
 import { useMainTableSync } from "@/hooks/useMainTableSync";
 import { useTasksRealtime } from "@/hooks/useTasksRealtime";
 import type { OkrFilters } from "@/lib/okr/filters";
 import {
+  filterRowsByBoardProjects,
   filterRowsByDepartmentId,
   filterRowsForOkrView,
   isOperationalRow,
@@ -14,9 +22,12 @@ import {
 import type { TaskListFilters } from "@/lib/tasks/filters";
 import { filterTaskListRows } from "@/lib/tasks/filters";
 import {
+  applyStoredColumnOrder,
   COL,
   customColWidthKey,
+  defaultMainTableColumnKeys,
   gridTemplateFromWidths,
+  TASKS_PERSISTABLE_BUILTIN_KEYS,
 } from "@/lib/tasks/main-table-columns";
 import {
   buildTaskForestSubset,
@@ -31,7 +42,31 @@ import type { TaskCustomColumnRow } from "@/types/main-table";
 import type { TaskRow } from "@/types/tasks";
 import type { StatusOption } from "@/types/profiles";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import {
+  DndContext,
+  type DragEndEvent,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  horizontalListSortingStrategy,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { StatusConfigurator } from "./StatusConfigurator";
 import { PersonPicker } from "./PersonPicker";
 import type { AssigneeOption } from "@/types/profiles";
@@ -79,11 +114,17 @@ export type MainTableViewProps = {
   layoutSyncKey: string;
   /** Nur Zeilen dieser Abteilung (UUID); Realtime lädt weiter alle Tasks, Filter greift clientseitig). */
   departmentId?: string | null;
+  /** Board-UUID (`department_boards.id`) für StatusConfigurator / board_column_config — nicht `departmentId`. */
+  statusConfigBoardId?: string | null;
   /** Gruppierung von außen steuern (z. B. Aufgaben-Toolbar). */
   groupBy?: MainTableGroupBy;
   onGroupByChange?: (g: MainTableGroupBy) => void;
   /** Ausgeblendete Tabellenspalten (`COL.*` oder `custom:…`). */
   hiddenColumnKeys?: string[];
+  /** Sichtbarkeit von außen steuern (persistente feste Spalten + board-lokal). */
+  onHiddenColumnKeysChange?: (keys: string[]) => void;
+  /** Gespeicherte Überschriften fester Spalten (Aufgaben-Modus). */
+  builtinColumnLabels?: Record<string, string>;
   taskSort?: MainTableTaskSort;
   /** Kein „Gruppieren“-Select in der Tabellen-Zeile (wird z. B. von der Toolbar übernommen). */
   suppressBuiltInGroupUi?: boolean;
@@ -91,6 +132,16 @@ export type MainTableViewProps = {
   boardProjectOptions?: { id: string; label: string }[];
   /** Verfügbare Personen/Gruppen für den PersonPicker. */
   assigneeOptions?: AssigneeOption[];
+  /** Nur Aufgaben mit project_id in dieser Liste (Board-Ansicht). Ungesetzt = keine Zusatzfilterung. */
+  restrictProjectIds?: string[];
+  /** Suffix für localStorage-Schlüssel (z. B. boardId), damit Board und Abteilung nicht kollidieren. */
+  tableStorageScopeSuffix?: string | null;
+  /** Neue Top-Level-Aufgaben in der Tabelle erhalten diese project_id (Board-Ansicht). */
+  defaultProjectIdForNewTasks?: string | null;
+  /** Workspace-Spaltenreihenfolge (main_table_layout.column_order). */
+  initialColumnOrder?: string[] | null;
+  /** Gespeicherte Gruppen-Reihenfolge (Thema/Status). */
+  initialGroupSort?: { topic?: string[]; status?: string[] } | null;
 };
 
 type FlatRow = { node: TaskTreeNode; depth: number };
@@ -134,12 +185,16 @@ function readCustomFields(row: TaskRow): Record<string, unknown> {
 function StatusCell({
   value,
   onChange,
+  options,
 }: {
   value: string;
   onChange: (s: string) => void;
+  /** Wenn gesetzt (z. B. Zusatzspalte „Status“), diese Optionen statt STATUSES. */
+  options?: readonly string[];
 }) {
   const [open, setOpen] = useState(false);
   const vis = statusVisual(value);
+  const opts = options ?? STATUSES;
   return (
     <div className="hs-pop relative h-full min-h-[36px] w-full">
       <button
@@ -160,7 +215,7 @@ function StatusCell({
           style={{ left: 0, right: "auto", zIndex: 50 }}
           onClick={(e) => e.stopPropagation()}
         >
-          {STATUSES.map((s) => {
+          {opts.map((s) => {
             const c = statusVisual(s);
             return (
               <button
@@ -183,43 +238,167 @@ function StatusCell({
   );
 }
 
-function orderedColumnKeys(
+function headerLabel(
   mode: "tasks" | "okr",
+  key: string,
   customColumns: TaskCustomColumnRow[],
-  includeOkrBoardProject: boolean,
-): string[] {
-  const keys: string[] = [COL.grab, COL.name];
-  if (mode === "okr") keys.push(COL.tipo);
-  keys.push(COL.person, COL.link);
-  if (mode === "okr" && includeOkrBoardProject) keys.push(COL.boardProj);
-  keys.push(COL.topic);
-  for (const c of [...customColumns].sort((a, b) => a.sort_order - b.sort_order)) {
-    keys.push(customColWidthKey(c.col_key));
-  }
-  keys.push(COL.status, COL.start, COL.end, COL.prog, COL.attach);
-  if (mode === "okr") keys.push(COL.actions);
-  return keys;
-}
-
-function headerLabel(mode: "tasks" | "okr", key: string, customColumns: TaskCustomColumnRow[]): string {
-  if (key === COL.grab) return "";
-  if (key === COL.name) return "Aufgabe";
-  if (key === COL.tipo) return "Typ";
-  if (key === COL.person) return "Person";
-  if (key === COL.link) return "OKR";
-  if (key === COL.boardProj) return "Board / Projekt";
-  if (key === COL.topic) return "Thema";
-  if (key === COL.status) return "Status";
-  if (key === COL.start) return "Start";
-  if (key === COL.end) return "Ende";
-  if (key === COL.prog) return "Fortschritt";
-  if (key === COL.attach) return "📎";
-  if (key === COL.actions) return "";
-  if (key.startsWith("custom:")) {
+  builtinColumnLabels: Record<string, string>,
+): string {
+  let base: string;
+  if (key === COL.grab) base = "";
+  else if (key === COL.name) base = "Aufgabe";
+  else if (key === COL.tipo) base = "Typ";
+  else if (key === COL.person) base = "Person";
+  else if (key === COL.link) base = "OKR";
+  else if (key === COL.boardProj) base = "Board / Projekt";
+  else if (key === COL.topic) base = "Thema";
+  else if (key === COL.status) base = "Status";
+  else if (key === COL.start) base = "Start";
+  else if (key === COL.end) base = "Ende";
+  else if (key === COL.prog) base = "Fortschritt";
+  else if (key === COL.attach) base = "📎";
+  else if (key === COL.actions) base = "";
+  else if (key.startsWith("custom:")) {
     const ck = key.slice("custom:".length);
     return customColumns.find((c) => c.col_key === ck)?.label ?? ck;
+  } else base = "";
+  const o = builtinColumnLabels[key]?.trim();
+  if (mode === "tasks" && o && !key.startsWith("custom:")) return o;
+  return base;
+}
+
+const MAX_SUBTASK_DEPTH = 5;
+
+function rowDepthFromRoot(row: TaskRow, byId: Map<number, TaskRow>): number {
+  let d = 0;
+  let cur: TaskRow | undefined = row;
+  while (cur?.parent_id != null) {
+    d++;
+    cur = byId.get(cur.parent_id);
+    if (d > 64) break;
   }
-  return "";
+  return d;
+}
+
+function groupKeyForRow(r: TaskRow, gb: GroupBy): string {
+  if (gb === "none") return "";
+  if (gb === "topic") return (r.topic || "Ohne Thema").trim() || "Ohne Thema";
+  return (r.status || "Ohne Status").trim() || "Ohne Status";
+}
+
+function SortableColumnHeaderCell({
+  id,
+  textAlign,
+  label,
+  menuButton,
+  dropdown,
+  resize,
+}: {
+  id: string;
+  textAlign: "left" | "center";
+  label: ReactNode;
+  menuButton: ReactNode;
+  dropdown: ReactNode;
+  resize: ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.88 : undefined,
+  };
+  return (
+    <span
+      ref={setNodeRef}
+      style={{ ...style, textAlign }}
+      className="group relative flex min-w-0 items-center px-2 py-1"
+      {...attributes}
+    >
+      <span className="flex min-w-0 flex-1 items-center gap-1">
+        <span
+          className="min-w-0 flex-1 cursor-grab touch-none select-none truncate"
+          {...listeners}
+        >
+          {label}
+        </span>
+        {menuButton}
+      </span>
+      {dropdown}
+      {resize}
+    </span>
+  );
+}
+
+function SortableGroupShell({
+  id,
+  sortable,
+  accent,
+  children,
+}: {
+  id: string;
+  sortable: boolean;
+  accent: string;
+  children: (opts: { headListeners?: Record<string, unknown> }) => ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+    disabled: !sortable,
+  });
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.92 : undefined,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      className="hs-mgroup min-w-max"
+      style={{ ...style, ["--group-accent" as string]: accent }}
+      {...(sortable ? attributes : {})}
+    >
+      {children({ headListeners: sortable ? listeners : undefined })}
+    </div>
+  );
+}
+
+function SortableTaskTableRow({
+  id,
+  className,
+  gridTemplateColumns,
+  grabHidden,
+  renderGrab,
+  rest,
+}: {
+  id: string;
+  className: string;
+  gridTemplateColumns: string;
+  grabHidden: boolean;
+  renderGrab: (listeners: Record<string, unknown> | undefined) => ReactNode;
+  rest: ReactNode;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id,
+  });
+  const style: CSSProperties = {
+    gridTemplateColumns,
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.9 : undefined,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      className={className}
+      style={style}
+      {...attributes}
+      {...(grabHidden ? listeners : {})}
+    >
+      {!grabHidden ? renderGrab(listeners) : null}
+      {rest}
+    </div>
+  );
 }
 
 export function MainTableView({
@@ -232,16 +411,24 @@ export function MainTableView({
   initialMergedWidths,
   layoutSyncKey,
   departmentId = null,
+  statusConfigBoardId = null,
   groupBy: groupByProp,
   onGroupByChange,
   hiddenColumnKeys = [],
+  onHiddenColumnKeysChange,
+  builtinColumnLabels = {},
   taskSort = "none",
   suppressBuiltInGroupUi = false,
   boardProjectOptions,
   assigneeOptions = [],
+  restrictProjectIds,
+  tableStorageScopeSuffix = null,
+  defaultProjectIdForNewTasks = null,
+  initialColumnOrder = null,
+  initialGroupSort = null,
 }: MainTableViewProps) {
   const router = useRouter();
-  const storageKey = `main-${mode}-${departmentId ?? "all"}`;
+  const storageKey = `main-${mode}-${departmentId ?? "all"}${tableStorageScopeSuffix ? `-${tableStorageScopeSuffix}` : ""}`;
   const [groupByInternal, setGroupByInternal] = useState<GroupBy>(
     mode === "tasks" ? "topic" : "status",
   );
@@ -264,7 +451,7 @@ export function MainTableView({
   const [addColStep, setAddColStep] = useState<"select" | "configure">("select");
   const [newColLabel, setNewColLabel] = useState("");
   const [newColType, setNewColType] = useState<
-    "text" | "date" | "status" | "dropdown" | "person" | "number" | "file" | "checkbox" | "formula" | "timeline" | "priority"
+    "text" | "date" | "status" | "dropdown" | "person" | "priority"
   >("text");
   const [newColStatusOpts, setNewColStatusOpts] = useState("Offen, Erledigt");
   const [newColDropdownOpts, setNewColDropdownOpts] = useState("Option 1, Option 2");
@@ -276,6 +463,7 @@ export function MainTableView({
   const [editGroupColor, setEditGroupColor] = useState("#00c875");
   const [statusConfigOpen, setStatusConfigOpen] = useState<string | null>(null);
   const [boardStatuses, setBoardStatuses] = useState<Record<string, StatusOption[]>>({});
+  const [maxDepthModalOpen, setMaxDepthModalOpen] = useState(false);
 
   const { widths, updateWidthImmediate, customColumns } = useMainTableSync(
     mode,
@@ -286,10 +474,19 @@ export function MainTableView({
   );
 
   const includeOkrBoardProject = mode === "okr" && boardProjectOptions !== undefined;
-  const colKeys = useMemo(
-    () => orderedColumnKeys(mode, customColumns, includeOkrBoardProject),
-    [mode, customColumns, includeOkrBoardProject],
+  const defaultColKeys = useMemo(
+    () =>
+      applyStoredColumnOrder(
+        defaultMainTableColumnKeys(mode, customColumns, includeOkrBoardProject),
+        initialColumnOrder ?? null,
+      ),
+    [mode, customColumns, includeOkrBoardProject, initialColumnOrder],
   );
+  const [colKeys, setColKeys] = useState(defaultColKeys);
+  useEffect(() => {
+    setColKeys(defaultColKeys);
+  }, [layoutSyncKey, defaultColKeys]);
+
   const hiddenSet = useMemo(() => new Set(hiddenColumnKeys), [hiddenColumnKeys]);
   const visibleColKeys = useMemo(
     () => colKeys.filter((k) => !hiddenSet.has(k)),
@@ -300,25 +497,47 @@ export function MainTableView({
     [visibleColKeys, widths],
   );
 
+  const sortableColumnIds = useMemo(
+    () => visibleColKeys.filter((k) => k !== COL.grab).map((k) => `col:${k}`),
+    [visibleColKeys],
+  );
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 6 },
+    }),
+  );
+
   const project = useMemo(() => {
     const dept = (rows: TaskRow[]) =>
       departmentId ? filterRowsByDepartmentId(rows, departmentId) : rows;
+    const boardScope = (rows: TaskRow[]) =>
+      restrictProjectIds === undefined
+        ? rows
+        : filterRowsByBoardProjects(rows, restrictProjectIds);
     if (mode === "okr" && okrFilters) {
-      return (all: TaskRow[]) => dept(filterRowsForOkrView(all, okrFilters));
+      return (all: TaskRow[]) =>
+        boardScope(dept(filterRowsForOkrView(all, okrFilters)));
     }
     if (mode === "tasks" && taskFilters) {
-      return (all: TaskRow[]) => dept(filterTaskListRows(all, taskFilters));
+      return (all: TaskRow[]) => boardScope(dept(filterTaskListRows(all, taskFilters)));
     }
     if (departmentId) {
-      return (all: TaskRow[]) => dept(all);
+      return (all: TaskRow[]) => boardScope(dept(all));
     }
     return undefined;
-  }, [mode, okrFilters, taskFilters, departmentId]);
+  }, [mode, okrFilters, taskFilters, departmentId, restrictProjectIds]);
 
   const { allRows, rows: projectedRows } = useTasksRealtime(initialTasks, {
     project,
     enabled: enableRealtime,
   });
+
+  const rowById = useMemo(() => {
+    const m = new Map<number, TaskRow>();
+    for (const r of allRows) m.set(r.id, r);
+    return m;
+  }, [allRows]);
 
   const keyResults = useMemo(
     () =>
@@ -356,7 +575,16 @@ export function MainTableView({
 
   const forest = useMemo(() => buildTaskForestSubset(rowsForForest), [rowsForForest]);
 
-  const groups = useMemo(() => groupForestBy(forest, groupBy), [forest, groupBy]);
+  const groupOrderList = useMemo(() => {
+    if (groupBy === "topic") return initialGroupSort?.topic ?? null;
+    if (groupBy === "status") return initialGroupSort?.status ?? null;
+    return null;
+  }, [groupBy, initialGroupSort]);
+
+  const groups = useMemo(
+    () => groupForestBy(forest, groupBy, groupOrderList),
+    [forest, groupBy, groupOrderList],
+  );
 
   useLayoutEffect(() => {
     if (expandInit || rowsForForest.length === 0) return;
@@ -417,8 +645,103 @@ export function MainTableView({
     });
   }, []);
 
+  const sortableGroupIndices = useMemo(() => groups.map((_, i) => `grp:${i}`), [groups]);
+  const groupSortEnabled = groupBy !== "none" && groups.length > 1;
+
+  const onMainDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event;
+      if (!over) return;
+      const a = String(active.id);
+      const o = String(over.id);
+      if (a === o) return;
+
+      if (a.startsWith("col:") && o.startsWith("col:")) {
+        const ak = a.slice(4);
+        const ok = o.slice(4);
+        if (ak === COL.grab || ok === COL.grab) return;
+        const vis = visibleColKeys;
+        const ai = vis.indexOf(ak);
+        const aj = vis.indexOf(ok);
+        if (ai < 0 || aj < 0) return;
+        const full = [...colKeys];
+        const fi = full.indexOf(vis[ai]!);
+        const fj = full.indexOf(vis[aj]!);
+        if (fi < 0 || fj < 0) return;
+        const next = arrayMove(full, fi, fj);
+        setColKeys(next);
+        setError(null);
+        const res = await saveMainTableColumnOrder({
+          viewKey: mode === "okr" ? "okr" : "tasks",
+          keys: next,
+          includeOkrBoardProject,
+        });
+        if (!res.ok) setError(res.message);
+        else router.refresh();
+        return;
+      }
+
+      if (a.startsWith("grp:") && o.startsWith("grp:") && groupBy !== "none") {
+        const gi = Number(a.slice(4));
+        const gj = Number(o.slice(4));
+        if (!Number.isFinite(gi) || !Number.isFinite(gj)) return;
+        const keys = groups.map((g) => g.key);
+        if (gi < 0 || gi >= keys.length || gj < 0 || gj >= keys.length) return;
+        const ordered = arrayMove(keys, gi, gj);
+        const groupSort = groupBy === "topic" ? { topic: ordered } : { status: ordered };
+        setError(null);
+        const res = await saveMainTableGroupSort({
+          viewKey: mode === "okr" ? "okr" : "tasks",
+          groupSort,
+        });
+        if (!res.ok) setError(res.message);
+        else router.refresh();
+        return;
+      }
+
+      if (a.startsWith("task:") && o.startsWith("task:")) {
+        const idA = Number(a.slice(5));
+        const idB = Number(o.slice(5));
+        if (!Number.isFinite(idA) || !Number.isFinite(idB)) return;
+        const rowA = rowById.get(idA);
+        const rowB = rowById.get(idB);
+        if (!rowA || !rowB || rowA.parent_id !== rowB.parent_id) return;
+        const gkA = groupKeyForRow(rowA, groupBy);
+        if (groupKeyForRow(rowB, groupBy) !== gkA) return;
+        const parentId = rowA.parent_id;
+        const siblings = projectedRows
+          .filter((r) => r.parent_id === parentId && groupKeyForRow(r, groupBy) === gkA)
+          .sort((x, y) => (x.sort_order ?? 0) - (y.sort_order ?? 0) || x.id - y.id);
+        const oldI = siblings.findIndex((r) => r.id === idA);
+        const newI = siblings.findIndex((r) => r.id === idB);
+        if (oldI < 0 || newI < 0) return;
+        const nextSibs = arrayMove(siblings, oldI, newI);
+        const updates = nextSibs.map((r, i) => ({ id: r.id, sort_order: i }));
+        setError(null);
+        const res = await reorderTaskRows({ updates });
+        if (!res.ok) setError(res.message);
+        else router.refresh();
+      }
+    },
+    [
+      visibleColKeys,
+      colKeys,
+      mode,
+      includeOkrBoardProject,
+      router,
+      groups,
+      groupBy,
+      rowById,
+      projectedRows,
+    ],
+  );
+
   const addSubtask = useCallback(
     async (parent: TaskRow) => {
+      if (rowDepthFromRoot(parent, rowById) >= MAX_SUBTASK_DEPTH) {
+        setMaxDepthModalOpen(true);
+        return;
+      }
       setBusy(true);
       setError(null);
 
@@ -499,7 +822,7 @@ export function MainTableView({
       if (!res.ok) setError(res.message);
       else setExpandedIds((prev) => new Set(prev).add(parent.id));
     },
-    [mode, departmentId],
+    [mode, departmentId, rowById],
   );
 
   const removeRow = useCallback(async (id: number) => {
@@ -534,7 +857,7 @@ export function MainTableView({
         notes: "",
         assigned: "",
         department_id: departmentId ?? null,
-        project_id: null,
+        project_id: defaultProjectIdForNewTasks ?? null,
         dependencies: [],
         attachments: [],
         custom_fields: {},
@@ -542,7 +865,7 @@ export function MainTableView({
       setBusy(false);
       if (!res.ok) setError(res.message);
     },
-    [mode, groupBy, departmentId],
+    [mode, groupBy, departmentId, defaultProjectIdForNewTasks],
   );
 
   const onResizeMouseDown = useCallback(
@@ -632,6 +955,446 @@ export function MainTableView({
       ? "Keine Zeilen für die aktuellen Filter — Filter anpassen oder zurücksetzen."
       : null;
 
+  function renderOneTaskRow(node: TaskTreeNode, depth: number): ReactNode {
+    const r = node.row;
+    const hasKids = node.children.length > 0;
+    const open = expandedIds.has(r.id);
+    const prog = Math.min(100, Math.max(0, r.progress ?? 0));
+    const sub = depth > 0;
+    const kind = normalizeItemKind(r);
+
+    const linkCell =
+      mode === "tasks" && isOperationalRow(r) ? (
+        <select
+          className="hs-select w-full min-w-0 !text-[11px]"
+          value={r.okr_key_result_id ?? ""}
+          onChange={(e) => {
+            const v = e.target.value;
+            if (!v) {
+              void patch(r.id, { okr_key_result_id: null, okr_objective_id: null });
+              return;
+            }
+            const krId = Number(v);
+            const kr = keyResults.find((k) => k.id === krId);
+            void patch(r.id, {
+              okr_key_result_id: krId,
+              okr_objective_id: kr?.okr_objective_id ?? null,
+            });
+          }}
+        >
+          <option value="">— nicht verknüpft —</option>
+          {keyResults.map((kr) => (
+            <option key={kr.id} value={kr.id}>
+              KR: {kr.name.slice(0, 40)}
+              {kr.name.length > 40 ? "…" : ""} (#{kr.id})
+            </option>
+          ))}
+        </select>
+      ) : mode === "okr" ? (
+        <div className="min-w-0 text-[11px] font-semibold text-[var(--ink-3)]">
+          {kind === "key_result" ? (
+            (() => {
+              const linked = tasksByKrId.get(r.id) ?? [];
+              return linked.length ? (
+                <span
+                  className="hs-name-kr inline-flex max-w-full items-center gap-1"
+                  title={linked.map((t) => t.name).join(", ")}
+                >
+                  {linked.length} Aufg.
+                </span>
+              ) : (
+                <span className="text-[var(--muted)]">—</span>
+              );
+            })()
+          ) : kind === "objective" ? (
+            (() => {
+              const linked = linkedTasksForObjective(r);
+              return linked.length ? (
+                <span
+                  className="hs-name-kr inline-flex max-w-full"
+                  title={linked.map((t) => t.name).join(", ")}
+                >
+                  {linked.length} Aufg. verknüpft
+                </span>
+              ) : (
+                <span className="text-[var(--muted)]">—</span>
+              );
+            })()
+          ) : isOperationalRow(r) && r.okr_key_result_id ? (
+            <span className="text-[var(--positive)]">✓ KR #{r.okr_key_result_id}</span>
+          ) : (
+            <span className="text-[var(--muted)]">—</span>
+          )}
+        </div>
+      ) : null;
+
+    const customCells = customColumns
+      .filter((c) => !hiddenSet.has(customColWidthKey(c.col_key)))
+      .map((c) => {
+      const wk = customColWidthKey(c.col_key);
+      const raw = readCustomFields(r)[c.col_key];
+      if (c.col_type === "text" || c.col_type === "person") {
+        return (
+          <div key={wk} className="hs-mcell min-w-0">
+            <input
+              className="hs-input w-full !py-1 !text-[12px]"
+              defaultValue={raw != null ? String(raw) : ""}
+              onBlur={(e) =>
+                void patchCustom(r, c.col_key, e.target.value.trim() || null)
+              }
+            />
+          </div>
+        );
+      }
+      if (c.col_type === "date") {
+        const s = raw != null ? String(raw).slice(0, 10) : "";
+        return (
+          <div key={wk} className="hs-mcell min-w-0">
+            <input
+              type="date"
+              className="hs-input w-full !py-1 !text-[12px]"
+              defaultValue={s}
+              onChange={(e) =>
+                void patchCustom(r, c.col_key, e.target.value || null)
+              }
+            />
+          </div>
+        );
+      }
+      if (c.col_type === "status") {
+        const stOpts = c.status_options?.length ? c.status_options : [...STATUSES];
+        const v = raw != null ? String(raw) : stOpts[0] ?? "";
+        return (
+          <div key={wk} className="hs-mcell hs-mcell-fill !p-0 min-w-0">
+            <StatusCell
+              value={v}
+              options={stOpts}
+              onChange={(s) => void patchCustom(r, c.col_key, s)}
+            />
+          </div>
+        );
+      }
+      if (c.col_type === "dropdown" || c.col_type === "priority") {
+        const opts =
+          c.col_type === "dropdown"
+            ? c.status_options?.length
+              ? c.status_options
+              : ["Option 1", "Option 2"]
+            : c.status_options?.length
+              ? c.status_options
+              : ["Niedrig", "Mittel", "Hoch"];
+        return (
+          <div key={wk} className="hs-mcell min-w-0">
+            <select
+              className="hs-select w-full !py-1 !text-[11px]"
+              value={raw != null ? String(raw) : ""}
+              onChange={(e) => void patchCustom(r, c.col_key, e.target.value || null)}
+            >
+              <option value="">—</option>
+              {opts.map((o) => (
+                <option key={o} value={o}>
+                  {o}
+                </option>
+              ))}
+            </select>
+          </div>
+        );
+      }
+      return null;
+    });
+
+    const grabHidden = hiddenSet.has(COL.grab);
+    return (
+      <SortableTaskTableRow
+        key={r.id}
+        id={`task:${r.id}`}
+        className={`hs-mrow min-w-max ${sub ? "hs-msub" : ""}`}
+        gridTemplateColumns={`${colTplVisible} 100px`}
+        grabHidden={grabHidden}
+        renderGrab={(listeners) => (
+          <div
+            className="hs-mcell hs-mcell-grab hs-mcell-center text-[var(--muted)] touch-none"
+            {...listeners}
+          >
+            ···
+          </div>
+        )}
+        rest={
+          <>
+        {!hiddenSet.has(COL.name) ? (
+          <div className="hs-mcell hs-mcell-name">
+            <div className="hs-name-cell" style={{ paddingLeft: depth * 24 }}>
+              {hasKids ? (
+                <button
+                  type="button"
+                  className="hs-name-toggle"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleRow(r.id);
+                  }}
+                  aria-expanded={open}
+                >
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      transform: open ? "rotate(90deg)" : "none",
+                      transition: "transform .15s",
+                    }}
+                  >
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                      <path
+                        d="M9 6l6 6-6 6"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </span>
+                </button>
+              ) : (
+                <span className="hs-name-toggle" />
+              )}
+              <div className="hs-name-main min-w-0">
+                <input
+                  key={`n-${r.id}-${r.name}`}
+                  defaultValue={r.name}
+                  onBlur={async (e) => {
+                    const v = e.target.value.trim();
+                    if (v && v !== r.name) await patch(r.id, { name: v });
+                  }}
+                  className="!rounded-md !border-[var(--border-2)] !bg-[var(--card)] px-2 py-1 text-[13.5px] font-semibold text-[var(--ink)] outline-none focus:!border-[var(--accent)]"
+                />
+              </div>
+              <div className="hs-name-actions">
+                <button
+                  type="button"
+                  className="hs-iconbtn"
+                  title={subtaskButtonTitle(mode, r)}
+                  disabled={busy}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    void addSubtask(r);
+                  }}
+                >
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M12 5v14M5 12h14"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </button>
+                <button
+                  type="button"
+                  className="hs-iconbtn"
+                  title="Notizen"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setNotesRow(r);
+                    setNotesDraft(r.notes || "");
+                  }}
+                >
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                    <path
+                      d="M8 21h8a2 2 0 002-2V7l-5-5H6a2 2 0 00-2 2v16"
+                      stroke="currentColor"
+                      strokeWidth="1.5"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : null}
+        {mode === "okr" && !hiddenSet.has(COL.tipo) ? (
+          <div className="hs-mcell">
+            <select
+              className="hs-select w-full min-w-0 !text-[12px]"
+              value={(r.item_kind || "task").toLowerCase()}
+              onChange={async (e) => {
+                await patch(r.id, {
+                  item_kind: e.target.value as (typeof ITEM_KINDS)[number],
+                });
+              }}
+            >
+              {(() => {
+                const cur = (r.item_kind || "task").toLowerCase() as (typeof ITEM_KINDS)[number];
+                const base = okrItemKindsForDepth(depth);
+                const list =
+                  !base.includes(cur) && ITEM_KINDS.includes(cur) ? [...base, cur] : base;
+                return list.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
+                ));
+              })()}
+            </select>
+          </div>
+        ) : null}
+        {!hiddenSet.has(COL.person) ? (
+          <div className="hs-mcell hs-mcell-center">
+            <PersonPicker
+              value={r.assigned}
+              onChange={(v) => void patch(r.id, { assigned: v })}
+              options={assigneeOptions}
+            />
+          </div>
+        ) : null}
+        {!hiddenSet.has(COL.link) ? (
+          <div className="hs-mcell min-w-0">{linkCell}</div>
+        ) : null}
+        {mode === "okr" && includeOkrBoardProject && !hiddenSet.has(COL.boardProj) ? (
+          <div className="hs-mcell min-w-0">
+            {isOperationalRow(r) ? (
+              <select
+                className="hs-select w-full !text-[11px]"
+                value={r.project_id ?? ""}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  void patch(r.id, { project_id: v ? v : null });
+                }}
+              >
+                <option value="">— kein Board-Projekt —</option>
+                {(boardProjectOptions ?? []).map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-[11px] text-[var(--muted)]">—</span>
+            )}
+          </div>
+        ) : null}
+        {!hiddenSet.has(COL.topic) ? (
+          <div className="hs-mcell">
+            <input
+              type="text"
+              className="hs-input-inline w-full truncate bg-transparent text-[12px]"
+              defaultValue={r.topic || ""}
+              placeholder="Thema…"
+              onBlur={(e) => {
+                const v = e.target.value.trim();
+                if (v !== (r.topic || "")) {
+                  void patch(r.id, { topic: v || null });
+                }
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+          </div>
+        ) : null}
+        {!hiddenSet.has(COL.status) ? (
+          <div className="hs-mcell hs-mcell-fill !p-0">
+            <StatusCell
+              value={r.status || "Not started"}
+              onChange={(s) => void patch(r.id, { status: s })}
+            />
+          </div>
+        ) : null}
+        {!hiddenSet.has(COL.start) ? (
+          <div className="hs-mcell hs-mcell-meta">
+            <input
+              type="date"
+              className="hs-input-date w-full bg-transparent text-[11px]"
+              value={r.start_date || ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                void patch(r.id, { start_date: v || null });
+              }}
+            />
+          </div>
+        ) : null}
+        {!hiddenSet.has(COL.end) ? (
+          <div className="hs-mcell hs-mcell-meta">
+            <input
+              type="date"
+              className={`hs-input-date w-full bg-transparent text-[11px] ${isDoneStatus(r.status) ? "line-through opacity-60" : ""}`}
+              value={r.end_date || ""}
+              onChange={(e) => {
+                const v = e.target.value;
+                void patch(r.id, { end_date: v || null });
+              }}
+            />
+          </div>
+        ) : null}
+        {!hiddenSet.has(COL.prog) ? (
+          <div className="hs-mcell hs-mcell-prog">
+            <div className="hs-prog-cell group w-full">
+              <div className="hs-prog cursor-pointer" onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const pct = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+                void patch(r.id, { progress: Math.max(0, Math.min(100, pct)) });
+              }}>
+                <span
+                  className="hs-prog-fill bg-[var(--accent)]"
+                  style={{ width: `${prog}%` }}
+                />
+              </div>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                className="hs-prog-input hidden w-12 text-right text-[11px] group-hover:inline"
+                value={prog}
+                onChange={(e) => {
+                  const v = Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0));
+                  void patch(r.id, { progress: v });
+                }}
+              />
+              <span className="hs-prog-num group-hover:hidden">{prog}%</span>
+            </div>
+          </div>
+        ) : null}
+        {!hiddenSet.has(COL.attach) ? (
+          <div className="hs-mcell hs-mcell-center text-[12px] font-semibold text-[var(--muted)]">
+            {Array.isArray(r.attachments) ? r.attachments.length : 0}
+          </div>
+        ) : null}
+        {customCells}
+        {mode === "okr" && !hiddenSet.has(COL.actions) ? (
+          <div className="hs-mcell hs-mcell-center">
+            <button
+              type="button"
+              className="text-[12px] font-semibold text-[var(--danger)] hover:underline"
+              onClick={() => void removeRow(r.id)}
+            >
+              Löschen
+            </button>
+          </div>
+        ) : null}
+        <div className="hs-mcell" />
+          </>
+        }
+      />
+    );
+  }
+
+  function renderTaskRowsNested(nodes: TaskTreeNode[], depth: number): ReactNode {
+    if (nodes.length === 0) return null;
+    return (
+      <SortableContext
+        items={nodes.map((n) => `task:${n.row.id}`)}
+        strategy={verticalListSortingStrategy}
+      >
+        {nodes.map((node) => (
+          <Fragment key={node.row.id}>
+            {renderOneTaskRow(node, depth)}
+            {node.children.length > 0 && expandedIds.has(node.row.id)
+              ? renderTaskRowsNested(node.children, depth + 1)
+              : null}
+          </Fragment>
+        ))}
+      </SortableContext>
+    );
+  }
+
   if (projectedRows.length > 0 && !expandInit) {
     return (
       <div className="space-y-3">
@@ -671,44 +1434,23 @@ export function MainTableView({
                   <h2 className="text-[15px] font-bold text-[var(--ink)]">Spalte hinzufügen</h2>
                 </div>
                 <div className="max-h-[60vh] overflow-y-auto p-5">
-                  <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-[var(--muted)]">Überblick</p>
-                  <div className="mb-5 grid grid-cols-2 gap-2">
-                    {[
-                      { type: "status", label: "Status", color: "#00c875", icon: "M4 6h16M4 12h12M4 18h8" },
-                      { type: "dropdown", label: "Drop-down", color: "#00c875", icon: "M6 9l6 6 6-6" },
-                      { type: "text", label: "Text", color: "#fdab3d", icon: "M4 6h16M4 12h16M4 18h10" },
-                      { type: "date", label: "Datum", color: "#00c875", icon: "M8 7V3m8 4V3M3 11h18M5 5h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" },
-                      { type: "person", label: "Personen", color: "#579bfc", icon: "M16 14a4 4 0 10-8 0M12 10a3 3 0 100-6 3 3 0 000 6z" },
-                      { type: "number", label: "Zahlen", color: "#a25ddc", icon: "M7 20l4-16m2 16l4-16M6 9h14M4 15h14" },
-                    ].map((col) => (
-                      <button
-                        key={col.type}
-                        type="button"
-                        onClick={() => { setNewColType(col.type as typeof newColType); setAddColStep("configure"); }}
-                        className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:border-[var(--border-2)] hover:bg-[var(--hover)]"
-                      >
-                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md" style={{ background: col.color }}>
-                          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" className="text-white">
-                            <path d={col.icon} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
-                        </span>
-                        <span className="text-[13px] font-medium text-[var(--ink)]">{col.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                  <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-[var(--muted)]">Sehr nützlich</p>
+                  <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-[var(--muted)]">Spaltentyp</p>
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { type: "file", label: "Datei", color: "#e2445c", icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6" },
-                      { type: "checkbox", label: "Checkbox", color: "#00c875", icon: "M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" },
-                      { type: "formula", label: "Formel", color: "#a25ddc", icon: "M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" },
-                      { type: "timeline", label: "Zeitleiste", color: "#a25ddc", icon: "M3 12h4l3-9 4 18 3-9h4" },
-                      { type: "priority", label: "Priority", color: "#ffcb00", icon: "M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.77l-7-14a2 2 0 00-3.68 0l-7 14A2 2 0 005 19z" },
+                      { type: "status" as const, label: "Status", color: "#00c875", icon: "M4 6h16M4 12h12M4 18h8" },
+                      { type: "dropdown" as const, label: "Drop-down", color: "#00c875", icon: "M6 9l6 6 6-6" },
+                      { type: "text" as const, label: "Text", color: "#fdab3d", icon: "M4 6h16M4 12h16M4 18h10" },
+                      { type: "date" as const, label: "Datum", color: "#00c875", icon: "M8 7V3m8 4V3M3 11h18M5 5h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" },
+                      { type: "person" as const, label: "Personen", color: "#579bfc", icon: "M16 14a4 4 0 10-8 0M12 10a3 3 0 100-6 3 3 0 000 6z" },
+                      { type: "priority" as const, label: "Priorität", color: "#ffcb00", icon: "M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.77l-7-14a2 2 0 00-3.68 0l-7 14A2 2 0 005 19z" },
                     ].map((col) => (
                       <button
                         key={col.type}
                         type="button"
-                        onClick={() => { setNewColType(col.type as typeof newColType); setAddColStep("configure"); }}
+                        onClick={() => {
+                          setNewColType(col.type);
+                          setAddColStep("configure");
+                        }}
                         className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:border-[var(--border-2)] hover:bg-[var(--hover)]"
                       >
                         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md" style={{ background: col.color }}>
@@ -745,12 +1487,7 @@ export function MainTableView({
                     {newColType === "text" && "Text-Spalte"}
                     {newColType === "date" && "Datum-Spalte"}
                     {newColType === "person" && "Personen-Spalte"}
-                    {newColType === "number" && "Zahlen-Spalte"}
-                    {newColType === "file" && "Datei-Spalte"}
-                    {newColType === "checkbox" && "Checkbox-Spalte"}
-                    {newColType === "formula" && "Formel-Spalte"}
-                    {newColType === "timeline" && "Zeitleiste-Spalte"}
-                    {newColType === "priority" && "Priority-Spalte"}
+                    {newColType === "priority" && "Priorität-Spalte"}
                   </h2>
                 </div>
                 <div className="space-y-4 p-5">
@@ -782,11 +1519,6 @@ export function MainTableView({
                       <input className="hs-input w-full" value={newColPriorityOpts} onChange={(e) => setNewColPriorityOpts(e.target.value)} />
                     </label>
                   ) : null}
-                  {newColType === "formula" ? (
-                    <p className="rounded-lg bg-[var(--surface-2)] p-3 text-[12px] text-[var(--muted)]">
-                      Formel-Spalten werden in einer späteren Version unterstützt.
-                    </p>
-                  ) : null}
                 </div>
                 <div className="flex justify-end gap-2 border-t border-[var(--border)] px-5 py-3">
                   <button type="button" className="hs-btn hs-btn-ghost" onClick={() => { setAddColOpen(false); setAddColStep("select"); }}>
@@ -812,119 +1544,210 @@ export function MainTableView({
           {emptyMsg}
         </p>
       ) : (
+        <DndContext sensors={sensors} onDragEnd={onMainDragEnd}>
         <div className="hs-mtable overflow-x-auto">
           <div className="hs-mtable-head min-w-max" style={{ gridTemplateColumns: `${colTplVisible} 100px` }}>
+            <SortableContext items={sortableColumnIds} strategy={horizontalListSortingStrategy}>
             {visibleColKeys.map((key, idx) => {
               const isCustom = key.startsWith("custom:");
               const colId = isCustom ? key.slice("custom:".length) : key;
+              const showBuiltinColMenu =
+                mode === "tasks" && !isCustom && TASKS_PERSISTABLE_BUILTIN_KEYS.has(key);
               const menuOpen = colMenuOpen === key;
-              return (
-                <span
-                  key={key}
-                  className="group relative flex min-w-0 items-center px-2 py-1"
-                  style={{ textAlign: idx === 0 ? "center" : "left" }}
+              const headLabel = headerLabel(mode, key, customColumns, builtinColumnLabels);
+              const menuButton =
+                idx > 0 ? (
+                  <button
+                    type="button"
+                    onClick={() => setColMenuOpen(menuOpen ? null : key)}
+                    className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded opacity-0 transition hover:bg-[var(--hover)] group-hover:opacity-100"
+                    aria-label="Spaltenmenü"
+                  >
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                      <circle cx="5" cy="12" r="1.5" fill="currentColor" />
+                      <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+                      <circle cx="19" cy="12" r="1.5" fill="currentColor" />
+                    </svg>
+                  </button>
+                ) : null;
+              const menuDropdown = menuOpen ? (
+                <div
+                  className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-[var(--border)] bg-[var(--card)] py-1 shadow-pop"
+                  onClick={(e) => e.stopPropagation()}
                 >
-                  <span className="truncate">{headerLabel(mode, key, customColumns)}</span>
-                  {idx > 0 ? (
+                  <div className="border-b border-[var(--border)] px-3 py-2 text-[10px] font-semibold text-[var(--muted)]">
+                    Spalten-ID: {colId}
+                  </div>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] hover:bg-[var(--hover)]"
+                    onClick={() => {
+                      setGroupBy(key === COL.topic ? "topic" : key === COL.status ? "status" : "none");
+                      setColMenuOpen(null);
+                    }}
+                  >
+                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                      <path d="M4 6h16M4 12h10M4 18h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                    Gruppieren nach
+                  </button>
+                  {(key === COL.status ||
+                    (isCustom && customColumns.find((c) => c.col_key === colId)?.col_type === "status")) ? (
                     <button
                       type="button"
-                      onClick={() => setColMenuOpen(menuOpen ? null : key)}
-                      className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded opacity-0 transition hover:bg-[var(--hover)] group-hover:opacity-100"
-                      aria-label="Spaltenmenü"
+                      className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] hover:bg-[var(--hover)]"
+                      onClick={() => {
+                        setStatusConfigOpen(key);
+                        setColMenuOpen(null);
+                      }}
                     >
                       <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                        <circle cx="5" cy="12" r="1.5" fill="currentColor" />
-                        <circle cx="12" cy="12" r="1.5" fill="currentColor" />
-                        <circle cx="19" cy="12" r="1.5" fill="currentColor" />
+                        <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
                       </svg>
+                      Status anpassen
                     </button>
                   ) : null}
-                  {menuOpen ? (
-                    <div
-                      className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-[var(--border)] bg-[var(--card)] py-1 shadow-pop"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      <div className="border-b border-[var(--border)] px-3 py-2 text-[10px] font-semibold text-[var(--muted)]">
-                        Spalten-ID: {colId}
-                      </div>
+                  {isCustom ? (
+                    <>
+                      <div className="my-1 border-t border-[var(--border)]" />
                       <button
                         type="button"
                         className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] hover:bg-[var(--hover)]"
                         onClick={() => {
-                          setGroupBy(key === COL.topic ? "topic" : key === COL.status ? "status" : "none");
+                          const row = customColumns.find((c) => c.col_key === colId);
+                          if (!row) return;
+                          const newName = window.prompt("Neuer Spaltenname:", headLabel);
+                          if (!newName?.trim()) {
+                            setColMenuOpen(null);
+                            return;
+                          }
+                          setError(null);
+                          void (async () => {
+                            const res = await renameTaskCustomColumn({ id: row.id, label: newName.trim() });
+                            if (!res.ok) setError(res.message);
+                            else router.refresh();
+                          })();
                           setColMenuOpen(null);
                         }}
                       >
                         <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                          <path d="M4 6h16M4 12h10M4 18h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                          <path d="M15.232 5.232l3.536 3.536M4 20h4l10-10a2.5 2.5 0 00-3.536-3.536L4 16.464V20z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
-                        Gruppieren nach
+                        Umbenennen
                       </button>
-                      {(key === COL.status || (isCustom && customColumns.find(c => `custom:${c.id}` === key)?.column_type === "status")) ? (
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-[var(--danger)] hover:bg-[var(--hover)]"
+                        onClick={() => {
+                          const meta = customColumns.find((c) => c.col_key === colId);
+                          if (!meta) {
+                            setColMenuOpen(null);
+                            return;
+                          }
+                          if (window.confirm("Diese Spalte wirklich löschen?")) {
+                            setError(null);
+                            void (async () => {
+                              const res = await deleteTaskCustomColumn({ id: meta.id });
+                              if (!res.ok) setError(res.message);
+                              else router.refresh();
+                            })();
+                          }
+                          setColMenuOpen(null);
+                        }}
+                      >
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                          <path d="M6 7v12a2 2 0 002 2h8a2 2 0 002-2V7M4 7h16M10 11v6M14 11v6M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        Löschen
+                      </button>
+                    </>
+                  ) : showBuiltinColMenu ? (
+                    <>
+                      <div className="my-1 border-t border-[var(--border)]" />
+                      {key !== COL.grab ? (
                         <button
                           type="button"
                           className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] hover:bg-[var(--hover)]"
                           onClick={() => {
-                            setStatusConfigOpen(key);
+                            const newName = window.prompt("Neuer Spaltenname (leer = Standard):", headLabel);
+                            if (newName === null) {
+                              setColMenuOpen(null);
+                              return;
+                            }
+                            setError(null);
+                            void (async () => {
+                              const res = await setTasksBuiltinColumnLabel({
+                                colKey: key,
+                                label: newName.trim(),
+                              });
+                              if (!res.ok) setError(res.message);
+                              else router.refresh();
+                            })();
                             setColMenuOpen(null);
                           }}
                         >
                           <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                            <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
+                            <path d="M15.232 5.232l3.536 3.536M4 20h4l10-10a2.5 2.5 0 00-3.536-3.536L4 16.464V20z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
                           </svg>
-                          Status anpassen
+                          Umbenennen
                         </button>
                       ) : null}
-                      {isCustom ? (
-                        <>
-                          <div className="my-1 border-t border-[var(--border)]" />
-                          <button
-                            type="button"
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] hover:bg-[var(--hover)]"
-                            onClick={() => {
-                              const newName = window.prompt("Neuer Spaltenname:", headerLabel(mode, key, customColumns));
-                              if (newName && newName.trim()) {
-                                // TODO: Server Action für Umbenennung
-                              }
-                              setColMenuOpen(null);
-                            }}
-                          >
-                            <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                              <path d="M15.232 5.232l3.536 3.536M4 20h4l10-10a2.5 2.5 0 00-3.536-3.536L4 16.464V20z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                            Umbenennen
-                          </button>
-                          <button
-                            type="button"
-                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-[var(--danger)] hover:bg-[var(--hover)]"
-                            onClick={() => {
-                              if (window.confirm("Diese Spalte wirklich löschen?")) {
-                                // TODO: Server Action für Löschen
-                              }
-                              setColMenuOpen(null);
-                            }}
-                          >
-                            <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                              <path d="M6 7v12a2 2 0 002 2h8a2 2 0 002-2V7M4 7h16M10 11v6M14 11v6M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                            </svg>
-                            Löschen
-                          </button>
-                        </>
-                      ) : null}
-                    </div>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-[var(--danger)] hover:bg-[var(--hover)]"
+                        onClick={() => {
+                          onHiddenColumnKeysChange?.([...new Set([...hiddenColumnKeys, key])]);
+                          setColMenuOpen(null);
+                        }}
+                      >
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                          <path d="M6 7v12a2 2 0 002 2h8a2 2 0 002-2V7M4 7h16M10 11v6M14 11v6M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                        Löschen
+                      </button>
+                    </>
                   ) : null}
-                  {idx < visibleColKeys.length - 1 ? (
-                    <span
-                      role="separator"
-                      aria-orientation="vertical"
-                      className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize select-none hover:bg-[var(--accent)]/25"
-                      onMouseDown={(e) => onResizeMouseDown(e, key)}
-                    />
-                  ) : null}
-                </span>
+                </div>
+              ) : null;
+              const resizeHandle =
+                idx < visibleColKeys.length - 1 ? (
+                  <span
+                    role="separator"
+                    aria-orientation="vertical"
+                    className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize select-none hover:bg-[var(--accent)]/25"
+                    onMouseDown={(e) => onResizeMouseDown(e, key)}
+                  />
+                ) : null;
+
+              if (key === COL.grab) {
+                return (
+                  <span
+                    key={key}
+                    className="group relative flex min-w-0 items-center px-2 py-1"
+                    style={{ textAlign: idx === 0 ? "center" : "left" }}
+                  >
+                    <span className="truncate">{headLabel}</span>
+                    {menuButton}
+                    {menuDropdown}
+                    {resizeHandle}
+                  </span>
+                );
+              }
+
+              return (
+                <SortableColumnHeaderCell
+                  key={key}
+                  id={`col:${key}`}
+                  textAlign={idx === 0 ? "center" : "left"}
+                  label={headLabel}
+                  menuButton={menuButton}
+                  dropdown={menuDropdown}
+                  resize={resizeHandle}
+                />
               );
             })}
+            </SortableContext>
             <button
               type="button"
               onClick={() => setAddColOpen(true)}
@@ -937,473 +1760,100 @@ export function MainTableView({
             </button>
           </div>
 
-          {groups.map((g) => {
-            const collapsed = collapsedGroups.has(g.key);
-            const flat = flattenVisible(g.roots, expandedIds);
-            const count = flat.length;
-            const done = flat.filter(({ node }) => isDoneStatus(node.row.status)).length;
-            const pct = count ? Math.round((done / count) * 100) : 0;
-            const accent = groupAccent(g.key);
+          {(() => {
+            const cards = groups.map((g, gi) => {
+              const collapsed = collapsedGroups.has(g.key);
+              const flat = flattenVisible(g.roots, expandedIds);
+              const count = flat.length;
+              const done = flat.filter(({ node }) => isDoneStatus(node.row.status)).length;
+              const pct = count ? Math.round((done / count) * 100) : 0;
+              const accent = groupAccent(g.key);
 
-            return (
-              <div
-                key={g.key}
-                className="hs-mgroup min-w-max"
-                style={{ ["--group-accent" as string]: accent }}
-              >
-                <div className="hs-mgroup-head">
-                  <button
-                    type="button"
-                    className="hs-mgroup-toggle"
-                    onClick={() => toggleGroup(g.key)}
-                    aria-expanded={!collapsed}
-                  >
-                    <span
-                      style={{
-                        display: "inline-flex",
-                        transform: collapsed ? "rotate(-90deg)" : "none",
-                        transition: "transform .15s",
-                        color: accent,
-                      }}
-                    >
-                      <svg width={16} height={16} viewBox="0 0 24 24" fill="none" aria-hidden>
-                        <path
-                          d="M6 9l6 6 6-6"
-                          stroke="currentColor"
-                          strokeWidth="2.4"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                        />
-                      </svg>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingGroup({ key: g.key, color: accent });
-                      setEditGroupName(g.key);
-                      setEditGroupColor(accent);
-                    }}
-                    className="hs-mgroup-title cursor-pointer transition hover:opacity-80"
-                    style={{ color: accent }}
-                  >
-                    {g.key}
-                  </button>
-                  <span className="hs-mgroup-count">
-                    {count} {count === 1 ? "Aufgabe" : "Aufgaben"}
-                  </span>
-                  <div className="hs-mgroup-progress">
-                    <span className="hs-mgroup-bar" style={{ width: `${pct}%`, background: accent }} />
-                  </div>
-                  <span className="hs-mgroup-pct">{pct}%</span>
-                </div>
-
-                {!collapsed &&
-                  flat.map(({ node, depth }) => {
-                    const r = node.row;
-                    const hasKids = node.children.length > 0;
-                    const open = expandedIds.has(r.id);
-                    const topic = (r.topic || "").trim() || "—";
-                    const prog = Math.min(100, Math.max(0, r.progress ?? 0));
-                    const sub = depth > 0;
-                    const kind = normalizeItemKind(r);
-
-                    const linkCell =
-                      mode === "tasks" && isOperationalRow(r) ? (
-                        <select
-                          className="hs-select w-full min-w-0 !text-[11px]"
-                          value={r.okr_key_result_id ?? ""}
-                          onChange={(e) => {
-                            const v = e.target.value;
-                            if (!v) {
-                              void patch(r.id, { okr_key_result_id: null, okr_objective_id: null });
-                              return;
-                            }
-                            const krId = Number(v);
-                            const kr = keyResults.find((k) => k.id === krId);
-                            void patch(r.id, {
-                              okr_key_result_id: krId,
-                              okr_objective_id: kr?.okr_objective_id ?? null,
-                            });
-                          }}
-                        >
-                          <option value="">— nicht verknüpft —</option>
-                          {keyResults.map((kr) => (
-                            <option key={kr.id} value={kr.id}>
-                              KR: {kr.name.slice(0, 40)}
-                              {kr.name.length > 40 ? "…" : ""} (#{kr.id})
-                            </option>
-                          ))}
-                        </select>
-                      ) : mode === "okr" ? (
-                        <div className="min-w-0 text-[11px] font-semibold text-[var(--ink-3)]">
-                          {kind === "key_result" ? (
-                            (() => {
-                              const linked = tasksByKrId.get(r.id) ?? [];
-                              return linked.length ? (
-                                <span
-                                  className="hs-name-kr inline-flex max-w-full items-center gap-1"
-                                  title={linked.map((t) => t.name).join(", ")}
-                                >
-                                  {linked.length} Aufg.
-                                </span>
-                              ) : (
-                                <span className="text-[var(--muted)]">—</span>
-                              );
-                            })()
-                          ) : kind === "objective" ? (
-                            (() => {
-                              const linked = linkedTasksForObjective(r);
-                              return linked.length ? (
-                                <span
-                                  className="hs-name-kr inline-flex max-w-full"
-                                  title={linked.map((t) => t.name).join(", ")}
-                                >
-                                  {linked.length} Aufg. verknüpft
-                                </span>
-                              ) : (
-                                <span className="text-[var(--muted)]">—</span>
-                              );
-                            })()
-                          ) : isOperationalRow(r) && r.okr_key_result_id ? (
-                            <span className="text-[var(--positive)]">✓ KR #{r.okr_key_result_id}</span>
-                          ) : (
-                            <span className="text-[var(--muted)]">—</span>
-                          )}
-                        </div>
-                      ) : null;
-
-                    const customCells = customColumns
-                      .filter((c) => !hiddenSet.has(customColWidthKey(c.col_key)))
-                      .map((c) => {
-                      const wk = customColWidthKey(c.col_key);
-                      const raw = readCustomFields(r)[c.col_key];
-                      if (c.col_type === "text") {
-                        return (
-                          <div key={wk} className="hs-mcell min-w-0">
-                            <input
-                              className="hs-input w-full !py-1 !text-[12px]"
-                              defaultValue={raw != null ? String(raw) : ""}
-                              onBlur={(e) =>
-                                void patchCustom(r, c.col_key, e.target.value.trim() || null)
-                              }
-                            />
-                          </div>
-                        );
-                      }
-                      if (c.col_type === "date") {
-                        const s = raw != null ? String(raw).slice(0, 10) : "";
-                        return (
-                          <div key={wk} className="hs-mcell min-w-0">
-                            <input
-                              type="date"
-                              className="hs-input w-full !py-1 !text-[12px]"
-                              defaultValue={s}
-                              onChange={(e) =>
-                                void patchCustom(r, c.col_key, e.target.value || null)
-                              }
-                            />
-                          </div>
-                        );
-                      }
-                      const opts = c.status_options?.length ? c.status_options : ["A", "B"];
-                      return (
-                        <div key={wk} className="hs-mcell min-w-0">
-                          <select
-                            className="hs-select w-full !py-1 !text-[11px]"
-                            value={raw != null ? String(raw) : ""}
-                            onChange={(e) => void patchCustom(r, c.col_key, e.target.value || null)}
-                          >
-                            <option value="">—</option>
-                            {opts.map((o) => (
-                              <option key={o} value={o}>
-                                {o}
-                            </option>
-                            ))}
-                          </select>
-                        </div>
-                      );
-                    });
-
-                    return (
-                      <div
-                        key={r.id}
-                        className={`hs-mrow min-w-max ${sub ? "hs-msub" : ""}`}
-                        style={{ gridTemplateColumns: `${colTplVisible} 100px` }}
-                      >
-                        {!hiddenSet.has(COL.grab) ? (
-                          <div className="hs-mcell hs-mcell-grab hs-mcell-center text-[var(--muted)]">
-                            ···
-                          </div>
-                        ) : null}
-                        {!hiddenSet.has(COL.name) ? (
-                          <div className="hs-mcell hs-mcell-name">
-                            <div className="hs-name-cell" style={{ paddingLeft: depth * 24 }}>
-                              {hasKids ? (
-                                <button
-                                  type="button"
-                                  className="hs-name-toggle"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleRow(r.id);
-                                  }}
-                                  aria-expanded={open}
-                                >
-                                  <span
-                                    style={{
-                                      display: "inline-flex",
-                                      transform: open ? "rotate(90deg)" : "none",
-                                      transition: "transform .15s",
-                                    }}
-                                  >
-                                    <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                                      <path
-                                        d="M9 6l6 6-6 6"
-                                        stroke="currentColor"
-                                        strokeWidth="2"
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                      />
-                                    </svg>
-                                  </span>
-                                </button>
-                              ) : (
-                                <span className="hs-name-toggle" />
-                              )}
-                              <div className="hs-name-main min-w-0">
-                                <input
-                                  key={`n-${r.id}-${r.name}`}
-                                  defaultValue={r.name}
-                                  onBlur={async (e) => {
-                                    const v = e.target.value.trim();
-                                    if (v && v !== r.name) await patch(r.id, { name: v });
-                                  }}
-                                  className="!rounded-md !border-[var(--border-2)] !bg-[var(--card)] px-2 py-1 text-[13.5px] font-semibold text-[var(--ink)] outline-none focus:!border-[var(--accent)]"
-                                />
-                              </div>
-                              <div className="hs-name-actions">
-                                <button
-                                  type="button"
-                                  className="hs-iconbtn"
-                                  title={subtaskButtonTitle(mode, r)}
-                                  disabled={busy}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    void addSubtask(r);
-                                  }}
-                                >
-                                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                                    <path
-                                      d="M12 5v14M5 12h14"
-                                      stroke="currentColor"
-                                      strokeWidth="2"
-                                      strokeLinecap="round"
-                                    />
-                                  </svg>
-                                </button>
-                                <button
-                                  type="button"
-                                  className="hs-iconbtn"
-                                  title="Notizen"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setNotesRow(r);
-                                    setNotesDraft(r.notes || "");
-                                  }}
-                                >
-                                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                                    <path
-                                      d="M8 21h8a2 2 0 002-2V7l-5-5H6a2 2 0 00-2 2v16"
-                                      stroke="currentColor"
-                                      strokeWidth="1.5"
-                                      strokeLinejoin="round"
-                                    />
-                                  </svg>
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        ) : null}
-                        {mode === "okr" && !hiddenSet.has(COL.tipo) ? (
-                          <div className="hs-mcell">
-                            <select
-                              className="hs-select w-full min-w-0 !text-[12px]"
-                              value={(r.item_kind || "task").toLowerCase()}
-                              onChange={async (e) => {
-                                await patch(r.id, {
-                                  item_kind: e.target.value as (typeof ITEM_KINDS)[number],
-                                });
-                              }}
-                            >
-                              {(() => {
-                                const cur = (r.item_kind || "task").toLowerCase() as (typeof ITEM_KINDS)[number];
-                                const base = okrItemKindsForDepth(depth);
-                                const list =
-                                  !base.includes(cur) && ITEM_KINDS.includes(cur) ? [...base, cur] : base;
-                                return list.map((k) => (
-                                  <option key={k} value={k}>
-                                    {k}
-                                  </option>
-                                ));
-                              })()}
-                            </select>
-                          </div>
-                        ) : null}
-                        {!hiddenSet.has(COL.person) ? (
-                          <div className="hs-mcell hs-mcell-center">
-                            <PersonPicker
-                              value={r.assigned}
-                              onChange={(v) => void patch(r.id, { assigned: v })}
-                              options={assigneeOptions}
-                            />
-                          </div>
-                        ) : null}
-                        {!hiddenSet.has(COL.link) ? (
-                          <div className="hs-mcell min-w-0">{linkCell}</div>
-                        ) : null}
-                        {mode === "okr" && includeOkrBoardProject && !hiddenSet.has(COL.boardProj) ? (
-                          <div className="hs-mcell min-w-0">
-                            {isOperationalRow(r) ? (
-                              <select
-                                className="hs-select w-full !text-[11px]"
-                                value={r.project_id ?? ""}
-                                onChange={(e) => {
-                                  const v = e.target.value;
-                                  void patch(r.id, { project_id: v ? v : null });
-                                }}
-                              >
-                                <option value="">— kein Board-Projekt —</option>
-                                {(boardProjectOptions ?? []).map((o) => (
-                                  <option key={o.id} value={o.id}>
-                                    {o.label}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : (
-                              <span className="text-[11px] text-[var(--muted)]">—</span>
-                            )}
-                          </div>
-                        ) : null}
-                        {!hiddenSet.has(COL.topic) ? (
-                          <div className="hs-mcell">
-                            <input
-                              type="text"
-                              className="hs-input-inline w-full truncate bg-transparent text-[12px]"
-                              defaultValue={r.topic || ""}
-                              placeholder="Thema…"
-                              onBlur={(e) => {
-                                const v = e.target.value.trim();
-                                if (v !== (r.topic || "")) {
-                                  void patch(r.id, { topic: v || null });
-                                }
-                              }}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.currentTarget.blur();
-                                }
-                              }}
-                            />
-                          </div>
-                        ) : null}
-                        {customCells}
-                        {!hiddenSet.has(COL.status) ? (
-                          <div className="hs-mcell hs-mcell-fill !p-0">
-                            <StatusCell
-                              value={r.status || "Not started"}
-                              onChange={(s) => void patch(r.id, { status: s })}
-                            />
-                          </div>
-                        ) : null}
-                        {!hiddenSet.has(COL.start) ? (
-                          <div className="hs-mcell hs-mcell-meta">
-                            <input
-                              type="date"
-                              className="hs-input-date w-full bg-transparent text-[11px]"
-                              value={r.start_date || ""}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                void patch(r.id, { start_date: v || null });
-                              }}
-                            />
-                          </div>
-                        ) : null}
-                        {!hiddenSet.has(COL.end) ? (
-                          <div className="hs-mcell hs-mcell-meta">
-                            <input
-                              type="date"
-                              className={`hs-input-date w-full bg-transparent text-[11px] ${isDoneStatus(r.status) ? "line-through opacity-60" : ""}`}
-                              value={r.end_date || ""}
-                              onChange={(e) => {
-                                const v = e.target.value;
-                                void patch(r.id, { end_date: v || null });
-                              }}
-                            />
-                          </div>
-                        ) : null}
-                        {!hiddenSet.has(COL.prog) ? (
-                          <div className="hs-mcell hs-mcell-prog">
-                            <div className="hs-prog-cell group w-full">
-                              <div className="hs-prog cursor-pointer" onClick={(e) => {
-                                const rect = e.currentTarget.getBoundingClientRect();
-                                const pct = Math.round(((e.clientX - rect.left) / rect.width) * 100);
-                                void patch(r.id, { progress: Math.max(0, Math.min(100, pct)) });
-                              }}>
-                                <span
-                                  className="hs-prog-fill bg-[var(--accent)]"
-                                  style={{ width: `${prog}%` }}
-                                />
-                              </div>
-                              <input
-                                type="number"
-                                min={0}
-                                max={100}
-                                className="hs-prog-input hidden w-12 text-right text-[11px] group-hover:inline"
-                                value={prog}
-                                onChange={(e) => {
-                                  const v = Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0));
-                                  void patch(r.id, { progress: v });
-                                }}
-                              />
-                              <span className="hs-prog-num group-hover:hidden">{prog}%</span>
-                            </div>
-                          </div>
-                        ) : null}
-                        {!hiddenSet.has(COL.attach) ? (
-                          <div className="hs-mcell hs-mcell-center text-[12px] font-semibold text-[var(--muted)]">
-                            {Array.isArray(r.attachments) ? r.attachments.length : 0}
-                          </div>
-                        ) : null}
-                        {mode === "okr" && !hiddenSet.has(COL.actions) ? (
-                          <div className="hs-mcell hs-mcell-center">
-                            <button
-                              type="button"
-                              className="text-[12px] font-semibold text-[var(--danger)] hover:underline"
-                              onClick={() => void removeRow(r.id)}
-                            >
-                              Löschen
-                            </button>
-                          </div>
-                        ) : null}
-                        <div className="hs-mcell" />
-                      </div>
-                    );
-                  })}
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void addTaskToGroup(g.key)}
-                  className="hs-add-task-row flex w-full items-center gap-2 border-b border-transparent px-3 py-2.5 text-[13px] text-[var(--muted)] transition hover:bg-[var(--card)] hover:text-[var(--ink)] disabled:opacity-50"
+              return (
+                <SortableGroupShell
+                  key={g.key}
+                  id={`grp:${gi}`}
+                  sortable={groupSortEnabled}
+                  accent={accent}
                 >
-                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" className="shrink-0 opacity-60">
-                    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
-                  </svg>
-                  {mode === "okr" ? "Objective hinzufügen…" : "Aufgabe hinzufügen…"}
-                </button>
-              </div>
+                  {({ headListeners }) => (
+                    <>
+                      <div className="hs-mgroup-head touch-none" {...(headListeners ?? {})}>
+                        <button
+                          type="button"
+                          className="hs-mgroup-toggle"
+                          onClick={() => toggleGroup(g.key)}
+                          aria-expanded={!collapsed}
+                        >
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              transform: collapsed ? "rotate(-90deg)" : "none",
+                              transition: "transform .15s",
+                              color: accent,
+                            }}
+                          >
+                            <svg width={16} height={16} viewBox="0 0 24 24" fill="none" aria-hidden>
+                              <path
+                                d="M6 9l6 6 6-6"
+                                stroke="currentColor"
+                                strokeWidth="2.4"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              />
+                            </svg>
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingGroup({ key: g.key, color: accent });
+                            setEditGroupName(g.key);
+                            setEditGroupColor(accent);
+                          }}
+                          className="hs-mgroup-title cursor-pointer transition hover:opacity-80"
+                          style={{ color: accent }}
+                        >
+                          {g.key}
+                        </button>
+                        <span className="hs-mgroup-count">
+                          {count} {count === 1 ? "Aufgabe" : "Aufgaben"}
+                        </span>
+                        <div className="hs-mgroup-progress">
+                          <span className="hs-mgroup-bar" style={{ width: `${pct}%`, background: accent }} />
+                        </div>
+                        <span className="hs-mgroup-pct">{pct}%</span>
+                      </div>
+
+                      {!collapsed && renderTaskRowsNested(g.roots, 0)}
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => void addTaskToGroup(g.key)}
+                        className="hs-add-task-row flex w-full items-center gap-2 border-b border-transparent px-3 py-2.5 text-[13px] text-[var(--muted)] transition hover:bg-[var(--card)] hover:text-[var(--ink)] disabled:opacity-50"
+                      >
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" className="shrink-0 opacity-60">
+                          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
+                        </svg>
+                        {mode === "okr" ? "Objective hinzufügen…" : "Aufgabe hinzufügen…"}
+                      </button>
+                    </>
+                  )}
+                </SortableGroupShell>
+              );
+            });
+
+            return groupSortEnabled ? (
+              <SortableContext items={sortableGroupIndices} strategy={verticalListSortingStrategy}>
+                {cards}
+              </SortableContext>
+            ) : (
+              cards
             );
-          })}
+          })()}
         </div>
+        </DndContext>
       )}
 
       {notesRow ? (
@@ -1514,20 +1964,46 @@ export function MainTableView({
         </div>
       ) : null}
 
-      {statusConfigOpen && departmentId ? (
+      {statusConfigOpen && statusConfigBoardId ? (
         <StatusConfigurator
-          boardId={departmentId}
+          boardId={statusConfigBoardId}
           columnKey={statusConfigOpen}
           statuses={boardStatuses[statusConfigOpen] ?? STATUSES.map((s) => ({
             id: s.toLowerCase().replace(/\s+/g, "_"),
             label: s,
-            color: statusVisual(s).bg,
+            color: statusVisual(s).color,
           }))}
           onClose={() => setStatusConfigOpen(null)}
           onUpdate={(statuses) => {
             setBoardStatuses((prev) => ({ ...prev, [statusConfigOpen]: statuses }));
           }}
         />
+      ) : null}
+
+      {maxDepthModalOpen ? (
+        <div
+          className="fixed inset-0 z-[85] flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
+          onClick={() => setMaxDepthModalOpen(false)}
+        >
+          <div
+            className="max-w-sm rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 shadow-pop"
+            onClick={(e) => e.stopPropagation()}
+            role="alertdialog"
+            aria-labelledby="max-depth-title"
+          >
+            <h3 id="max-depth-title" className="mb-2 text-[15px] font-bold text-[var(--ink)]">
+              Unterebenen-Limit
+            </h3>
+            <p className="text-[14px] text-[var(--ink-3)]">
+              Es sind maximal {MAX_SUBTASK_DEPTH} Unterebenen erlaubt.
+            </p>
+            <div className="mt-5 flex justify-end">
+              <button type="button" className="hs-btn hs-btn-primary" onClick={() => setMaxDepthModalOpen(false)}>
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
       ) : null}
     </div>
   );

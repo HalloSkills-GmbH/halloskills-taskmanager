@@ -14,6 +14,8 @@ type Props = {
   layoutSyncKey: string;
   departmentId?: string | null;
   boardProjectOptions?: { id: string; label: string }[];
+  initialColumnOrder?: string[] | null;
+  initialGroupSort?: { topic?: string[]; status?: string[] } | null;
 };
 
 export function OkrTableClient({
@@ -24,6 +26,8 @@ export function OkrTableClient({
   layoutSyncKey,
   departmentId = null,
   boardProjectOptions,
+  initialColumnOrder = null,
+  initialGroupSort = null,
 }: Props) {
   const [error] = useState<string | null>(null);
 
@@ -51,6 +55,8 @@ export function OkrTableClient({
         layoutSyncKey={layoutSyncKey}
         departmentId={departmentId}
         boardProjectOptions={boardProjectOptions}
+        initialColumnOrder={initialColumnOrder}
+        initialGroupSort={initialGroupSort}
       />
     </div>
   );

@@ -31,6 +31,7 @@ function IconFunnel({ className }: { className?: string }) {
 
 export function TasksMonoToolbar({
   departmentId,
+  defaultProjectIdForNewTasks = null,
   draft,
   setDraft,
   applyFilters,
@@ -47,6 +48,8 @@ export function TasksMonoToolbar({
   initialCustomColumns,
 }: {
   departmentId?: string | null;
+  /** Board-Ansicht: erste Projekt-ID für neue Aufgaben (Themengruppe). */
+  defaultProjectIdForNewTasks?: string | null;
   draft: TaskListFilters;
   setDraft: React.Dispatch<React.SetStateAction<TaskListFilters>>;
   applyFilters: () => void;
@@ -105,19 +108,24 @@ export function TasksMonoToolbar({
     applyFilters();
   }, [applyFilters]);
 
-  const onCreateTask = useCallback(async () => {
+  const onCreateTopicGroup = useCallback(async () => {
+    const topic = window.prompt("Name der neuen Gruppe (Thema):");
+    if (topic == null) return;
+    const t = topic.trim();
+    if (!t) return;
     setCreating(true);
     try {
       const res = await insertTaskRow({
         name: "Neue Aufgabe",
         item_kind: "task",
         department_id: departmentId ?? null,
+        project_id: defaultProjectIdForNewTasks ?? null,
         parent_id: null,
         okr_objective_id: null,
         okr_key_result_id: null,
         start_date: null,
         end_date: null,
-        topic: null,
+        topic: t,
         assigned: null,
         notes: null,
         dependencies: [],
@@ -128,14 +136,14 @@ export function TasksMonoToolbar({
     } finally {
       setCreating(false);
     }
-  }, [departmentId, router]);
+  }, [departmentId, defaultProjectIdForNewTasks, router]);
 
   return (
     <div className="mb-4 flex min-w-0 flex-col gap-3 rounded-hs border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 shadow-card sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
       <button
         type="button"
         disabled={creating}
-        onClick={() => void onCreateTask()}
+        onClick={() => void onCreateTopicGroup()}
         className="hs-btn hs-btn-primary !py-1.5 !text-[12px] disabled:pointer-events-none disabled:opacity-50"
       >
         {creating ? "…" : "Neue Gruppe"}

@@ -2,7 +2,18 @@ import type { NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/middleware";
 
 export async function middleware(request: NextRequest) {
-  return await updateSession(request);
+  try {
+    return await updateSession(request);
+  } catch (e) {
+    console.error("[middleware]", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    return new NextResponse(
+      process.env.NODE_ENV === "development"
+        ? `Middleware-Fehler: ${msg}`
+        : "Internal Server Error",
+      { status: 500 },
+    );
+  }
 }
 
 export const config = {

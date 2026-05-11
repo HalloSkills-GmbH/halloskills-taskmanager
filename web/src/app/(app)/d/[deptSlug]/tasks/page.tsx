@@ -1,6 +1,7 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { TasksPageClient } from "@/components/tasks/TasksPageClient";
+import { normalizeLayoutHidden, normalizeLayoutLabels } from "@/lib/tasks/main-table-layout-shared";
 import { mergeLayoutWidths } from "@/lib/tasks/main-table-columns";
 import { fetchDepartmentBySlug } from "@/lib/supabase/department-queries";
 import { createClient } from "@/lib/supabase/server";
@@ -17,14 +18,22 @@ export default async function DepartmentTasksPage({
   if (!dept) notFound();
 
   const supabase = await createClient();
-  const [tasksRes, colsRes, layoutRes] = await Promise.all([
+  const [tasksRes, colsRes, layoutRes, boardRes] = await Promise.all([
     supabase.from("tasks").select("*").eq("department_id", dept.id).order("id"),
     supabase.from("task_custom_columns").select("*").order("sort_order", { ascending: true }),
     supabase.from("main_table_layout").select("*").eq("view_key", "tasks").maybeSingle(),
+    supabase
+      .from("department_boards")
+      .select("id")
+      .eq("department_id", dept.id)
+      .order("sort_order", { ascending: true })
+      .limit(1)
+      .maybeSingle(),
   ]);
 
   const customCols = (colsRes.error ? [] : colsRes.data ?? []) as TaskCustomColumnRow[];
   const layoutRow = (layoutRes.error ? null : layoutRes.data) as MainTableLayoutRow | null;
+  const departmentDefaultBoardId = boardRes.error ? null : (boardRes.data?.id ?? null);
   const cw = layoutRow?.column_widths;
   const storedWidths =
     cw && typeof cw === "object" && !Array.isArray(cw)
@@ -32,6 +41,8 @@ export default async function DepartmentTasksPage({
       : undefined;
   const merged = mergeLayoutWidths("tasks", storedWidths, customCols);
   const layoutSyncKey = `${layoutRow?.updated_at ?? "0"}:${customCols.map((c) => c.id).join(",")}`;
+  const serverBuiltinColumnsHidden = normalizeLayoutHidden(layoutRow?.builtin_columns_hidden);
+  const serverBuiltinColumnLabels = normalizeLayoutLabels(layoutRow?.builtin_column_labels);
 
   return (
     <>
@@ -56,6 +67,11 @@ export default async function DepartmentTasksPage({
           layoutSyncKey={layoutSyncKey}
           departmentId={dept.id}
           tasksPathPrefix={`/d/${dept.slug}/tasks`}
+          serverBuiltinColumnsHidden={serverBuiltinColumnsHidden}
+          serverBuiltinColumnLabels={serverBuiltinColumnLabels}
+          initialColumnOrder={layoutRow?.column_order ?? null}
+          initialGroupSort={layoutRow?.group_sort ?? null}
+          departmentDefaultBoardId={departmentDefaultBoardId}
         />
       </Suspense>
     </>

@@ -128,48 +128,48 @@ export function StatusConfigurator({
                 className="flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-2"
               >
                 {editingId === status.id ? (
-                  <>
-                    <div className="relative">
+                  <div className="flex min-w-0 flex-1 flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="h-7 w-7 shrink-0 rounded-md border border-[var(--border)]"
+                        style={{ background: editColor }}
+                        title="Farbe unten wählen"
+                      />
+                      <input
+                        type="text"
+                        value={editLabel}
+                        onChange={(e) => setEditLabel(e.target.value)}
+                        className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-[13px] outline-none focus:border-[var(--accent)]"
+                        autoFocus
+                      />
                       <button
                         type="button"
-                        className="h-7 w-7 rounded-md"
-                        style={{ background: editColor }}
-                        onClick={() => {}}
-                      />
-                      <div className="absolute left-0 top-full z-10 mt-1 grid grid-cols-6 gap-1 rounded-lg border border-[var(--border)] bg-[var(--card)] p-2 shadow-pop">
-                        {COLOR_PALETTE.map((c) => (
-                          <button
-                            key={c}
-                            type="button"
-                            onClick={() => setEditColor(c)}
-                            className={`h-5 w-5 rounded ${editColor === c ? "ring-2 ring-[var(--accent)]" : ""}`}
-                            style={{ background: c }}
-                          />
-                        ))}
-                      </div>
+                        onClick={handleSaveEdit}
+                        className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-[var(--accent)] hover:bg-[var(--accent-soft)]"
+                      >
+                        OK
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingId(null)}
+                        className="shrink-0 rounded-md px-2 py-1 text-[11px] font-medium text-[var(--muted)] hover:bg-[var(--hover)]"
+                      >
+                        Abbrechen
+                      </button>
                     </div>
-                    <input
-                      type="text"
-                      value={editLabel}
-                      onChange={(e) => setEditLabel(e.target.value)}
-                      className="min-w-0 flex-1 rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-[13px] outline-none focus:border-[var(--accent)]"
-                      autoFocus
-                    />
-                    <button
-                      type="button"
-                      onClick={handleSaveEdit}
-                      className="rounded-md px-2 py-1 text-[11px] font-medium text-[var(--accent)] hover:bg-[var(--accent-soft)]"
-                    >
-                      OK
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setEditingId(null)}
-                      className="rounded-md px-2 py-1 text-[11px] font-medium text-[var(--muted)] hover:bg-[var(--hover)]"
-                    >
-                      Abbrechen
-                    </button>
-                  </>
+                    <div className="flex flex-wrap gap-1 pl-0 sm:pl-9">
+                      {COLOR_PALETTE.map((c) => (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => setEditColor(c)}
+                          className={`h-5 w-5 rounded ${editColor === c ? "ring-2 ring-[var(--accent)] ring-offset-1" : ""}`}
+                          style={{ background: c }}
+                          aria-label={`Farbe ${c}`}
+                        />
+                      ))}
+                    </div>
+                  </div>
                 ) : (
                   <>
                     <span

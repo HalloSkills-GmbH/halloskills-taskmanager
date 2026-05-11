@@ -1,8 +1,18 @@
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { BoardProjectsAndKanban } from "@/components/workspace/BoardProjectsAndKanban";
-import { parseBoardColumnConfig } from "@/lib/department-board";
-import { fetchBoardProjects, fetchDepartmentBoardForDept, fetchDepartmentBySlug } from "@/lib/supabase/department-queries";
+import { TasksPageClient } from "@/components/tasks/TasksPageClient";
+import {
+  BOARD_TASKS_DEFAULT_HIDDEN_COLUMNS,
+  normalizeLayoutLabels,
+} from "@/lib/tasks/main-table-layout-shared";
+import { mergeLayoutWidths } from "@/lib/tasks/main-table-columns";
+import {
+  fetchBoardProjects,
+  fetchDepartmentBoardForDept,
+  fetchDepartmentBySlug,
+} from "@/lib/supabase/department-queries";
 import { createClient } from "@/lib/supabase/server";
+import type { MainTableLayoutRow, TaskCustomColumnRow } from "@/types/main-table";
 import type { TaskRow } from "@/types/tasks";
 
 export default async function DepartmentBoardDetailPage({
@@ -15,56 +25,62 @@ export default async function DepartmentBoardDetailPage({
   if (!dept) notFound();
 
   const board = await fetchDepartmentBoardForDept(boardId, dept.id);
-  if (!board) notFound();
+  if (!board || board.is_group) notFound();
 
-  const supabase = await createClient();
   const projects = await fetchBoardProjects(boardId);
   const projectIds = projects.map((p) => p.id);
 
-  let initialBoardTasks: TaskRow[] = [];
-  let tasksError: { message: string } | null = null;
-  if (projectIds.length > 0) {
-    const { data, error } = await supabase
-      .from("tasks")
-      .select("*")
-      .in("project_id", projectIds)
-      .order("id");
-    initialBoardTasks = (data ?? []) as TaskRow[];
-    tasksError = error;
-  }
+  const supabase = await createClient();
+  const [tasksRes, colsRes, layoutRes] = await Promise.all([
+    supabase.from("tasks").select("*").eq("department_id", dept.id).order("id"),
+    supabase.from("task_custom_columns").select("*").order("sort_order", { ascending: true }),
+    supabase.from("main_table_layout").select("*").eq("view_key", "tasks").maybeSingle(),
+  ]);
 
-  const { data: maxRow } = await supabase
-    .from("tasks")
-    .select("id")
-    .order("id", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-  const nextTaskId = maxRow?.id != null ? (maxRow.id as number) + 1 : 1;
-  const columns = parseBoardColumnConfig(board.column_config);
+  const customCols = (colsRes.error ? [] : colsRes.data ?? []) as TaskCustomColumnRow[];
+  const layoutRow = (layoutRes.error ? null : layoutRes.data) as MainTableLayoutRow | null;
+  const cw = layoutRow?.column_widths;
+  const storedWidths =
+    cw && typeof cw === "object" && !Array.isArray(cw)
+      ? (cw as Record<string, number>)
+      : undefined;
+  const merged = mergeLayoutWidths("tasks", storedWidths, customCols);
+  const layoutSyncKey = `${layoutRow?.updated_at ?? "0"}:${customCols.map((c) => c.id).join(",")}`;
+  const serverBuiltinColumnLabels = normalizeLayoutLabels(layoutRow?.builtin_column_labels);
 
   return (
-    <div className="mx-auto max-w-[1600px] px-8 pb-14 pt-8">
-      <h1 className="text-[1.85rem] font-bold tracking-tight text-app-ink">{board.name}</h1>
-      <p className="mt-2 text-sm text-app-text">
-        Abteilung {dept.name} — Projekte anlegen, Aufgaben zuordnen; im Kanban erscheinen nur
-        operative Aufgaben mit Projekt auf diesem Board.
-      </p>
-      {tasksError ? (
-        <p className="mt-4 rounded-xl border border-[#EC8580]/60 bg-[#FBC4C0]/35 px-4 py-2 text-sm text-[#8E2B27]">
-          {tasksError.message}
-        </p>
+    <>
+      {tasksRes.error ? (
+        <div className="mx-auto max-w-[1680px] px-[var(--pad-x)] pt-8">
+          <p className="rounded-xl border border-[#EC8580]/60 bg-[#FBC4C0]/35 px-4 py-3 text-sm font-medium text-[#8E2B27]">
+            {tasksRes.error.message}
+          </p>
+        </div>
       ) : null}
-
-      <div className="mt-8">
-        <BoardProjectsAndKanban
-          boardId={board.id}
+      <Suspense
+        fallback={
+          <div className="mx-auto max-w-[1680px] px-[var(--pad-x)] py-14 text-sm font-medium text-app-muted">
+            Board wird geladen…
+          </div>
+        }
+      >
+        <TasksPageClient
+          initialTasks={(tasksRes.data as TaskRow[]) ?? []}
+          initialCustomColumns={customCols}
+          initialMergedWidths={merged}
+          layoutSyncKey={layoutSyncKey}
           departmentId={dept.id}
-          initialProjects={projects}
-          initialBoardTasks={initialBoardTasks}
-          columns={columns}
-          nextTaskId={nextTaskId}
+          tasksPathPrefix={`/d/${dept.slug}/boards/${board.id}`}
+          boardId={board.id}
+          allowedProjectIds={projectIds}
+          defaultHiddenColumnKeys={BOARD_TASKS_DEFAULT_HIDDEN_COLUMNS}
+          hiddenColumnsStorageKey={`main-tasks-hidden-board-${board.id}`}
+          serverBuiltinColumnLabels={serverBuiltinColumnLabels}
+          initialColumnOrder={layoutRow?.column_order ?? null}
+          initialGroupSort={layoutRow?.group_sort ?? null}
+          departmentDefaultBoardId={board.id}
         />
-      </div>
-    </div>
+      </Suspense>
+    </>
   );
 }

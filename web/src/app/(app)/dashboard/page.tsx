@@ -7,6 +7,25 @@ import type { DepartmentRow } from "@/types/departments";
 import type { TaskRow } from "@/types/tasks";
 
 export default async function DashboardPage() {
+  try {
+    return await DashboardContent();
+  } catch (e) {
+    console.error("[dashboard]", e);
+    const msg = e instanceof Error ? e.message : String(e);
+    return (
+      <div className="mx-auto max-w-[720px] px-8 py-14">
+        <h1 className="text-[1.5rem] font-bold tracking-tight text-app-ink">Dashboard nicht erreichbar</h1>
+        <p className="mt-3 text-sm leading-relaxed text-app-text">
+          {process.env.NODE_ENV === "development"
+            ? msg
+            : "Ein Serverfehler ist aufgetreten. Bitte .next löschen, Dev-Server neu starten und Supabase-Umgebungsvariablen prüfen."}
+        </p>
+      </div>
+    );
+  }
+}
+
+async function DashboardContent() {
   const supabase = await createClient();
 
   const [tasksRes, deptRes] = await Promise.all([

@@ -65,9 +65,23 @@ export async function insertTaskRow(
     taskId = (maxRow?.id ?? 0) + 1;
   }
 
+  const parentId = parsed.data.parent_id ?? null;
+  let sortOrder = parsed.data.sort_order;
+  if (sortOrder === undefined) {
+    let q = supabase.from("tasks").select("sort_order").order("sort_order", { ascending: false }).limit(1);
+    if (parentId === null) {
+      q = q.is("parent_id", null);
+    } else {
+      q = q.eq("parent_id", parentId);
+    }
+    const { data: maxSort } = await q.maybeSingle();
+    sortOrder = (maxSort?.sort_order ?? -1) + 1;
+  }
+
   const row = {
     ...parsed.data,
     id: taskId,
+    sort_order: sortOrder,
     dependencies: parsed.data.dependencies ?? [],
     attachments: parsed.data.attachments ?? [],
     progress: parsed.data.progress ?? 0,
@@ -94,6 +108,31 @@ export async function deleteTaskRow(
   const { error } = await supabase.from("tasks").delete().eq("id", nid.data);
   if (error) {
     return { ok: false, message: error.message };
+  }
+  revalidateOkr();
+  return { ok: true };
+}
+
+const reorderTasksSchema = z.object({
+  updates: z.array(
+    z.object({
+      id: z.coerce.number().int().positive(),
+      sort_order: z.coerce.number().int().min(0),
+    }),
+  ),
+});
+
+export async function reorderTaskRows(
+  input: unknown,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const parsed = reorderTasksSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues.map((i) => i.message).join(", ") };
+  }
+  const supabase = await createClient();
+  for (const u of parsed.data.updates) {
+    const { error } = await supabase.from("tasks").update({ sort_order: u.sort_order }).eq("id", u.id);
+    if (error) return { ok: false, message: error.message };
   }
   revalidateOkr();
   return { ok: true };

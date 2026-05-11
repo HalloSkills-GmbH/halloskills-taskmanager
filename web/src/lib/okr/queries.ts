@@ -69,3 +69,12 @@ export function filterOperationalRows(rows: TaskRow[]): TaskRow[] {
 export function filterRowsByDepartmentId(rows: TaskRow[], departmentId: string): TaskRow[] {
   return rows.filter((r) => r.department_id === departmentId);
 }
+
+/** Operative Aufgaben, deren project_id zu einem Board-Projekt gehört (leeres Array → keine Zeilen). */
+export function filterRowsByBoardProjects(rows: TaskRow[], projectIds: string[]): TaskRow[] {
+  if (!projectIds.length) return [];
+  const set = new Set(projectIds);
+  return filterOperationalRows(rows).filter(
+    (r) => r.project_id != null && set.has(r.project_id),
+  );
+}

@@ -59,6 +59,8 @@ export default async function DepartmentOkrsTablePage({
         layoutSyncKey={layoutSyncKey}
         departmentId={dept.id}
         boardProjectOptions={boardProjectOptions}
+        initialColumnOrder={layoutRow?.column_order ?? null}
+        initialGroupSort={layoutRow?.group_sort ?? null}
       />
     </div>
   );

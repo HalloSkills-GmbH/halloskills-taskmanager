@@ -1,11 +1,18 @@
 import type { DepartmentBoardColumn } from "@/types/departments";
 
+/** Kanban-Spalten für leeres / neues Board (`parseBoardColumnConfig`-Fallback). */
 export const DEFAULT_BOARD_COLUMNS: DepartmentBoardColumn[] = [
   { id: "c1", title: "Not started" },
   { id: "c2", title: "Planned" },
   { id: "c3", title: "In Progress" },
   { id: "c4", title: "Complete" },
 ];
+
+/**
+ * Standard-`column_config` beim Anlegen von Abteilungs-Boards (INSERT).
+ * `title` muss zu `tasks.status`-Werten passen, sonst landen Karten in der ersten Spalte.
+ */
+export const DEFAULT_DEPARTMENT_BOARD_KANBAN_COLUMNS: DepartmentBoardColumn[] = [...DEFAULT_BOARD_COLUMNS];
 
 export function parseBoardColumnConfig(raw: unknown): DepartmentBoardColumn[] {
   if (!Array.isArray(raw)) return DEFAULT_BOARD_COLUMNS;

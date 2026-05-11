@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/slug";
+import { DEFAULT_DEPARTMENT_BOARD_KANBAN_COLUMNS } from "@/lib/department-board";
 import type { DepartmentBoardColumn } from "@/types/departments";
 
 const boardColumnSchema = z.array(
@@ -25,13 +26,30 @@ async function insertDefaultDepartmentBoard(
   supabase: Awaited<ReturnType<typeof createClient>>,
   departmentId: string,
 ) {
-  const { error } = await supabase.from("department_boards").insert({
-    department_id: departmentId,
-    name: "Hauptboard",
-    sort_order: 0,
-  });
+  const { data: boardRow, error } = await supabase
+    .from("department_boards")
+    .insert({
+      department_id: departmentId,
+      name: "Hauptboard",
+      sort_order: 0,
+      column_config: DEFAULT_DEPARTMENT_BOARD_KANBAN_COLUMNS,
+      is_group: false,
+    })
+    .select("id")
+    .single();
   if (error) {
     console.error("[workspace] Standard-Board:", error.message);
+    return;
+  }
+  if (boardRow?.id) {
+    const { error: pErr } = await supabase.from("board_projects").insert({
+      board_id: boardRow.id as string,
+      name: "Allgemein",
+      sort_order: 0,
+    });
+    if (pErr) {
+      console.error("[workspace] Standard-Projekt (Hauptboard):", pErr.message);
+    }
   }
 }
 
@@ -94,6 +112,9 @@ export async function createDepartmentBoard(
     sort_order: 0,
     is_group: parsed.data.isGroup,
   };
+  if (!parsed.data.isGroup) {
+    insertData.column_config = DEFAULT_DEPARTMENT_BOARD_KANBAN_COLUMNS;
+  }
   if (parsed.data.parentId) {
     insertData.parent_id = parsed.data.parentId;
   }
@@ -105,8 +126,73 @@ export async function createDepartmentBoard(
   if (error || !data?.id) {
     return { ok: false, message: error?.message || "Insert fehlgeschlagen" };
   }
+  const newBoardId = data.id as string;
+  if (!parsed.data.isGroup) {
+    const { data: proj, error: pErr } = await supabase
+      .from("board_projects")
+      .insert({
+        board_id: newBoardId,
+        name: "Allgemein",
+        sort_order: 0,
+      })
+      .select("id")
+      .single();
+    if (pErr) {
+      console.error("[workspace] Standard-Projekt:", pErr.message);
+    } else if (proj?.id) {
+      const projectId = proj.id as string;
+      const deptId = parsed.data.departmentId;
+      const { data: maxRow } = await supabase
+        .from("tasks")
+        .select("id")
+        .order("id", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      let nextId = (maxRow?.id ?? 0) + 1;
+      const base = {
+        item_kind: "task" as const,
+        department_id: deptId,
+        project_id: projectId,
+        status: "Planned",
+        progress: 0,
+        parent_id: null,
+        okr_objective_id: null,
+        okr_key_result_id: null,
+        start_date: null,
+        end_date: null,
+        assigned: null,
+        notes: null,
+        dependencies: [] as number[],
+        attachments: [] as unknown[],
+        custom_fields: {} as Record<string, unknown>,
+      };
+      const topic1 = "Gruppe 1";
+      const topic2 = "Gruppe 2";
+      const seedRows: Record<string, unknown>[] = [];
+      for (let i = 1; i <= 4; i++) {
+        seedRows.push({
+          ...base,
+          id: nextId++,
+          name: `Aufgabe ${i}`,
+          topic: topic1,
+        });
+      }
+      for (let i = 1; i <= 2; i++) {
+        seedRows.push({
+          ...base,
+          id: nextId++,
+          name: `Aufgabe ${i}`,
+          topic: topic2,
+        });
+      }
+      const { error: seedErr } = await supabase.from("tasks").insert(seedRows);
+      if (seedErr) {
+        console.error("[workspace] Board-Beispielaufgaben:", seedErr.message);
+      }
+    }
+  }
   revalidateWorkspace();
-  return { ok: true, id: data.id as string, isGroup: parsed.data.isGroup };
+  return { ok: true, id: newBoardId, isGroup: parsed.data.isGroup };
 }
 
 export async function updateDepartmentBoardColumns(
@@ -188,6 +274,56 @@ export async function deleteBoardProject(
     .eq("id", parsed.data.projectId)
     .eq("board_id", parsed.data.boardId);
   if (error) return { ok: false, message: error.message };
+  revalidateWorkspace();
+  return { ok: true };
+}
+
+export async function reorderSidebarBoards(
+  input: unknown,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const parsed = z
+    .object({
+      departmentId: z.string().uuid(),
+      parentId: z.string().uuid().nullable(),
+      orderedIds: z.array(z.string().uuid()).min(1),
+    })
+    .safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues.map((i) => i.message).join(", ") };
+  }
+  const { departmentId, parentId, orderedIds } = parsed.data;
+  const supabase = await createClient();
+
+  const { data: rows, error: fetchErr } = await supabase
+    .from("department_boards")
+    .select("id, department_id, parent_id, is_group")
+    .in("id", orderedIds);
+  if (fetchErr) return { ok: false, message: fetchErr.message };
+  if (!rows || rows.length !== orderedIds.length) {
+    return { ok: false, message: "Boards nicht vollständig gefunden" };
+  }
+
+  for (const row of rows) {
+    if (row.is_group) {
+      return { ok: false, message: "Nur Boards dürfen sortiert werden" };
+    }
+    if (row.department_id !== departmentId) {
+      return { ok: false, message: "Abteilung passt nicht" };
+    }
+    const rowParent = row.parent_id ?? null;
+    if (rowParent !== parentId) {
+      return { ok: false, message: "Eltern-Ordner passt nicht" };
+    }
+  }
+
+  const updates = orderedIds.map((id, i) =>
+    supabase.from("department_boards").update({ sort_order: i }).eq("id", id),
+  );
+  const results = await Promise.all(updates);
+  const failed = results.find((r) => r.error);
+  if (failed?.error) {
+    return { ok: false, message: failed.error.message };
+  }
   revalidateWorkspace();
   return { ok: true };
 }

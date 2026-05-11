@@ -45,6 +45,8 @@ export default async function OkrsTablePage({
         initialCustomColumns={customCols}
         initialMergedWidths={merged}
         layoutSyncKey={layoutSyncKey}
+        initialColumnOrder={layoutRow?.column_order ?? null}
+        initialGroupSort={layoutRow?.group_sort ?? null}
       />
     </div>
   );

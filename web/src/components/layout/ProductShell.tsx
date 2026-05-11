@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Suspense, useEffect, useMemo, useState, useTransition } from "react";
+import { Suspense, useEffect, useMemo, useState, useTransition, type CSSProperties } from "react";
 import { SignOutButton } from "@/components/layout/SignOutButton";
 import { TopbarSearch } from "@/components/layout/TopbarSearch";
 import { PageTitleProvider, usePageTitle } from "@/components/layout/PageTitleContext";
@@ -13,6 +13,7 @@ import {
 } from "@/lib/navigation/default-departments";
 import {
   createDepartmentBoard,
+  reorderSidebarBoards,
   updateBoardParent,
   updateDepartment,
   deleteDepartment,
@@ -20,9 +21,9 @@ import {
   deleteDepartmentBoard,
 } from "@/lib/workspace/actions";
 import {
+  closestCorners,
   DndContext,
   DragOverlay,
-  useDraggable,
   useDroppable,
   type DragEndEvent,
   type DragStartEvent,
@@ -30,6 +31,13 @@ import {
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
 export type DepartmentNavItem = {
   id: string;
@@ -54,6 +62,10 @@ type NavItem = {
   label: string;
   match: (path: string) => boolean;
 };
+
+function isBoardListId(id: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id);
+}
 
 function IconDashboard({ active }: { active: boolean }) {
   return (
@@ -232,7 +244,7 @@ function SubLinkMenu({ deptId, deptSlug, linkType }: { deptId: string; deptSlug:
   );
 }
 
-function DraggableBoardItem({
+function SortableBoardItem({
   board,
   slug,
   pathname,
@@ -247,30 +259,34 @@ function DraggableBoardItem({
   onUpdate: (data: { name?: string; icon?: string; color?: string }) => Promise<{ ok: boolean }>;
   onDelete: () => Promise<{ ok: boolean }>;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
+  /** DnD aria-IDs: erst nach Mount auf den Link legen (Hydration). */
+  const [dragReady, setDragReady] = useState(false);
+  useEffect(() => {
+    setDragReady(true);
+  }, []);
+
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: board.id,
     data: { type: "board", board },
+    disabled: !dragReady,
   });
   const href = `/d/${slug}/boards/${board.id}`;
   const active = pathname === href;
 
-  const style = transform
-    ? { transform: `translate(${transform.x}px, ${transform.y}px)`, opacity: isDragging ? 0.5 : 1 }
-    : undefined;
+  const style: CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    ...(isDragging ? { opacity: 0.55 } : {}),
+  };
 
   return (
-    <div
-      ref={setNodeRef}
-      className={`group/sidebar-board flex items-center ${isDragging ? "dragging" : ""}`}
-      style={{ ...style }}
-    >
+    <div ref={setNodeRef} className={`group/sidebar-board flex items-center`} style={style}>
       <Link
         href={href}
         className={`hs-nav-item flex-1 !py-1.5 !pr-1 !text-[12px] ${active ? "active" : ""}`}
         style={{ paddingLeft: `${indent * 4}px` }}
         title={board.name}
-        {...attributes}
-        {...listeners}
+        {...(dragReady ? { ...attributes, ...listeners } : {})}
       >
         <span
           className="ico flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md"
@@ -407,6 +423,125 @@ function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
   }
 }
 
+/** DndContext nur um die Board-Liste einer Abteilung — Abteilungsköpfe/Sublinks bleiben außerhalb (SSR + Hydration stabil). */
+function DepartmentBoardsDnd({
+  deptId,
+  boards,
+  children,
+}: {
+  deptId: string;
+  boards: DeptBoardNavItem[];
+  children: React.ReactNode;
+}) {
+  const router = useRouter();
+  const [, startDndTransition] = useTransition();
+  const [draggingBoard, setDraggingBoard] = useState<DeptBoardNavItem | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 8 },
+    })
+  );
+
+  const handleDragStart = (event: DragStartEvent) => {
+    const { active } = event;
+    if (active.data.current?.type === "board") {
+      setDraggingBoard(active.data.current.board as DeptBoardNavItem);
+    }
+  };
+
+  const siblingBoardIds = (parentId: string | null) =>
+    boards
+      .filter((b) => !b.isGroup && (b.parentId ?? null) === parentId)
+      .map((b) => b.id);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    setDraggingBoard(null);
+
+    if (!over) return;
+
+    const boardId = active.id as string;
+    if (!isBoardListId(boardId)) return;
+
+    const currentBoard = active.data.current?.board as DeptBoardNavItem | undefined;
+    if (!currentBoard || currentBoard.isGroup) return;
+
+    const overId = over.id as string;
+
+    if (overId.startsWith("group:") || overId.startsWith("root:")) {
+      let newParentId: string | null = null;
+      if (overId.startsWith("group:")) {
+        newParentId = overId.replace("group:", "");
+      } else if (overId.startsWith("root:")) {
+        newParentId = null;
+      }
+
+      if (currentBoard.parentId === newParentId) return;
+
+      startDndTransition(async () => {
+        const res = await updateBoardParent({ boardId, parentId: newParentId });
+        if (res.ok) router.refresh();
+      });
+      return;
+    }
+
+    if (!isBoardListId(overId)) return;
+
+    const overBoard = boards.find((b) => b.id === overId);
+    if (!overBoard || overBoard.isGroup) return;
+    if (overBoard.id === boardId) return;
+
+    const targetParentId = overBoard.parentId ?? null;
+    const currentParentId = currentBoard.parentId ?? null;
+
+    if (currentParentId === targetParentId) {
+      const sibs = siblingBoardIds(currentParentId);
+      const oldIndex = sibs.indexOf(boardId);
+      const newIndex = sibs.indexOf(overId);
+      if (oldIndex < 0 || newIndex < 0 || oldIndex === newIndex) return;
+      const orderedIds = arrayMove(sibs, oldIndex, newIndex);
+      startDndTransition(async () => {
+        const res = await reorderSidebarBoards({ departmentId: deptId, parentId: currentParentId, orderedIds });
+        if (res.ok) router.refresh();
+      });
+      return;
+    }
+
+    startDndTransition(async () => {
+      const moveRes = await updateBoardParent({ boardId, parentId: targetParentId });
+      if (!moveRes.ok) return;
+      const without = siblingBoardIds(targetParentId).filter((id) => id !== boardId);
+      const overIdx = without.indexOf(overId);
+      const insertAt = overIdx === -1 ? without.length : overIdx;
+      const orderedIds = [...without.slice(0, insertAt), boardId, ...without.slice(insertAt)];
+      const reRes = await reorderSidebarBoards({ departmentId: deptId, parentId: targetParentId, orderedIds });
+      if (reRes.ok) router.refresh();
+    });
+  };
+
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCorners}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      {children}
+      <DragOverlay>
+        {draggingBoard ? (
+          <div className="hs-nav-item !py-1.5 !text-[12px] rounded-lg bg-[var(--card)] shadow-pop">
+            <span className="ico flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md bg-[var(--surface-2)] text-[var(--ink-2)]">
+              <IconBoard active={false} />
+            </span>
+            <span className="hs-nav-label truncate">{draggingBoard.name}</span>
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
+  );
+}
+
 function TopHeader() {
   const { title } = usePageTitle();
   return (
@@ -457,57 +592,9 @@ export function ProductShell({
   const [newBoardName, setNewBoardName] = useState("");
   const [createBoardPending, startCreateBoard] = useTransition();
   const [createBoardError, setCreateBoardError] = useState<string | null>(null);
-  const [draggingBoard, setDraggingBoard] = useState<DeptBoardNavItem | null>(null);
-  const [, startDndTransition] = useTransition();
-  const [dndMounted, setDndMounted] = useState(false);
   const initial = userEmail?.trim().charAt(0).toUpperCase() || "?";
 
-  useEffect(() => {
-    setDndMounted(true);
-  }, []);
   const displayName = userEmail?.split("@")[0]?.replace(/\./g, " ") || "Angemeldet";
-
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    })
-  );
-
-  const handleDragStart = (event: DragStartEvent) => {
-    const { active } = event;
-    if (active.data.current?.type === "board") {
-      setDraggingBoard(active.data.current.board as DeptBoardNavItem);
-    }
-  };
-
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    setDraggingBoard(null);
-
-    if (!over) return;
-
-    const boardId = active.id as string;
-    const overId = over.id as string;
-
-    let newParentId: string | null = null;
-    if (overId.startsWith("group:")) {
-      newParentId = overId.replace("group:", "");
-    } else if (overId.startsWith("root:")) {
-      newParentId = null;
-    } else {
-      return;
-    }
-
-    const currentBoard = active.data.current?.board as DeptBoardNavItem | undefined;
-    if (currentBoard?.parentId === newParentId) return;
-
-    startDndTransition(async () => {
-      const res = await updateBoardParent({ boardId, parentId: newParentId });
-      if (res.ok) {
-        router.refresh();
-      }
-    });
-  };
 
   const defaultSlugSet = useMemo(() => new Set<string>(DEFAULT_DEPARTMENT_SLUGS_ORDER), []);
   const orderedDepartments = useMemo(() => {
@@ -697,42 +784,48 @@ export function ProductShell({
               onDelete={() => handleBoardDelete(group.id)}
             >
               {childBoards.length > 0 ? (
-                <div className="flex flex-col gap-px">
-                  {childBoards.map((b) => (
-                    <DraggableBoardItem
-                      key={b.id}
-                      board={b}
-                      slug={slug}
-                      pathname={pathname}
-                      indent={14}
-                      onUpdate={(data) => handleBoardUpdate(b.id, data)}
-                      onDelete={() => handleBoardDelete(b.id)}
-                    />
-                  ))}
-                </div>
+                <SortableContext items={childBoards.map((b) => b.id)} strategy={verticalListSortingStrategy}>
+                  <div className="flex flex-col gap-px">
+                    {childBoards.map((b) => (
+                      <SortableBoardItem
+                        key={b.id}
+                        board={b}
+                        slug={slug}
+                        pathname={pathname}
+                        indent={14}
+                        onUpdate={(data) => handleBoardUpdate(b.id, data)}
+                        onDelete={() => handleBoardDelete(b.id)}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
               ) : null}
             </DroppableGroup>
           );
         })}
-        {topLevelBoards.map((b) => (
-          <DraggableBoardItem
-            key={b.id}
-            board={b}
-            slug={slug}
-            pathname={pathname}
-            indent={11}
-            onUpdate={(data) => handleBoardUpdate(b.id, data)}
-            onDelete={() => handleBoardDelete(b.id)}
-          />
-        ))}
+        {topLevelBoards.length > 0 ? (
+          <SortableContext items={topLevelBoards.map((b) => b.id)} strategy={verticalListSortingStrategy}>
+            {topLevelBoards.map((b) => (
+              <SortableBoardItem
+                key={b.id}
+                board={b}
+                slug={slug}
+                pathname={pathname}
+                indent={11}
+                onUpdate={(data) => handleBoardUpdate(b.id, data)}
+                onDelete={() => handleBoardDelete(b.id)}
+              />
+            ))}
+          </SortableContext>
+        ) : null}
       </DroppableRoot>
     );
   };
 
   return (
     <PageTitleProvider>
-      <div className="hs-app grid min-h-screen grid-cols-[248px_minmax(0,1fr)] bg-[var(--bg)]">
-        <aside className="hs-side w-[248px] max-w-[248px] shrink-0">
+      <div className="hs-app grid min-h-screen grid-cols-[232px_minmax(0,1fr)] bg-[var(--bg)]">
+        <aside className="hs-side w-[232px] max-w-[232px] shrink-0">
         <div className="flex flex-col border-b border-[var(--border)]/40">
           <div className="flex flex-col items-center px-[18px] pt-[16px]">
             <Link href="/dashboard" title="HalloSkills">
@@ -782,13 +875,7 @@ export function ProductShell({
           </nav>
 
           <div className="hs-side-section">Abteilungen</div>
-          {dndMounted ? (
-          <DndContext
-            sensors={sensors}
-            onDragStart={handleDragStart}
-            onDragEnd={handleDragEnd}
-          >
-            <div className="hs-side-groups pb-2">
+          <div className="hs-side-groups pb-2">
               {orderedDepartments.map((d) => {
                   const base = `/d/${d.slug}`;
                   const inDept = pathname.startsWith(base);
@@ -924,35 +1011,17 @@ export function ProductShell({
                             </button>
                           ) : null}
                         </div>
-                        {d.id && !boardsSectionCollapsed ? renderBoardsWithGroups(d.slug, boards, d.id) : null}
+                        {d.id && !boardsSectionCollapsed ? (
+                          <DepartmentBoardsDnd key={`dnd-${d.id}`} deptId={d.id} boards={boards}>
+                            {renderBoardsWithGroups(d.slug, boards, d.id)}
+                          </DepartmentBoardsDnd>
+                        ) : null}
                       </div>
                       )}
                     </div>
                   );
                 })}
             </div>
-            <DragOverlay>
-              {draggingBoard ? (
-                <div className="hs-nav-item !py-1.5 !text-[12px] rounded-lg bg-[var(--card)] shadow-pop">
-                  <span className="ico flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md bg-[var(--surface-2)] text-[var(--ink-2)]">
-                    <IconBoard active={false} />
-                  </span>
-                  <span className="hs-nav-label truncate">{draggingBoard.name}</span>
-                </div>
-              ) : null}
-            </DragOverlay>
-          </DndContext>
-          ) : (
-            <div className="hs-side-groups pb-2">
-              {orderedDepartments.map((d) => (
-                <div key={d.slug} className="group mb-1">
-                  <div className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--sidebar-muted)]">
-                    {d.name}
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         <div className="hs-side-foot mt-auto shrink-0 border-t border-[var(--border)]/40 pt-2">

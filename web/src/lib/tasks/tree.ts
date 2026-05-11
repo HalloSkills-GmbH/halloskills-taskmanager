@@ -17,7 +17,12 @@ export function buildTaskForest(rows: TaskRow[]): TaskTreeNode[] {
   }
 
   for (const list of childrenByParent.values()) {
-    list.sort((a, b) => a.id - b.id);
+    list.sort((a, b) => {
+      const sa = a.sort_order ?? 0;
+      const sb = b.sort_order ?? 0;
+      if (sa !== sb) return sa - sb;
+      return a.id - b.id;
+    });
   }
 
   const roots = childrenByParent.get("root") ?? [];
@@ -56,6 +61,7 @@ export type GroupedForest = { key: string; roots: TaskTreeNode[] };
 export function groupForestBy(
   forest: TaskTreeNode[],
   groupBy: "none" | "topic" | "status",
+  groupOrder?: string[] | null,
 ): GroupedForest[] {
   if (groupBy === "none") {
     return [{ key: "Alle Aufgaben", roots: forest }];
@@ -69,9 +75,23 @@ export function groupForestBy(
     if (!map.has(raw)) map.set(raw, []);
     map.get(raw)!.push(node);
   }
-  return [...map.entries()]
-    .sort(([a], [b]) => a.localeCompare(b, "de"))
-    .map(([key, roots]) => ({ key, roots }));
+  const entries = [...map.entries()];
+  const order = groupOrder?.length ? groupOrder : null;
+  if (order) {
+    entries.sort(([a], [b]) => {
+      const ia = order.indexOf(a);
+      const ib = order.indexOf(b);
+      const aKnown = ia !== -1;
+      const bKnown = ib !== -1;
+      if (aKnown && bKnown) return ia - ib;
+      if (aKnown && !bKnown) return -1;
+      if (!aKnown && bKnown) return 1;
+      return a.localeCompare(b, "de");
+    });
+  } else {
+    entries.sort(([a], [b]) => a.localeCompare(b, "de"));
+  }
+  return entries.map(([key, roots]) => ({ key, roots }));
 }
 
 const EXPAND_KEY = "halloskills-main-table-expanded";

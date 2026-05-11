@@ -75,6 +75,10 @@ function BoardCard({ task }: { task: TaskRow }) {
       }
     : undefined;
 
+  const statusLabel = (task.status || "").trim() || "—";
+  const deadline = (task.end_date || "").trim() || "—";
+  const person = (task.assigned || "").trim() || "—";
+
   return (
     <article
       ref={setNodeRef}
@@ -91,22 +95,21 @@ function BoardCard({ task }: { task: TaskRow }) {
           {(task.item_kind || "").replace(/_/g, " ")}
         </div>
       ) : null}
-      <div className="mt-2 flex flex-wrap gap-2 text-[11px] font-medium text-app-text">
-        {task.topic ? (
-          <span className="rounded-md bg-app-brand-soft/60 px-2 py-0.5 text-app-brand">{task.topic}</span>
-        ) : null}
-        {task.assigned ? (
-          <span className="rounded-md bg-app-hover px-2 py-0.5 text-app-ink2">{task.assigned}</span>
-        ) : null}
-        {task.progress != null ? (
-          <span className="rounded-md bg-app-hover px-2 py-0.5 text-app-ink2">{task.progress}%</span>
-        ) : null}
-      </div>
-      {(task.start_date || task.end_date) && (
-        <div className="mt-2 text-[11px] font-medium text-app-muted">
-          {task.start_date ?? "—"} → {task.end_date ?? task.start_date ?? "—"}
+
+      <dl className="mt-3 space-y-1.5 text-[11px] leading-tight">
+        <div className="flex gap-2">
+          <dt className="w-[4.5rem] shrink-0 font-semibold text-app-muted">Status</dt>
+          <dd className="min-w-0 truncate font-medium text-app-text">{statusLabel}</dd>
         </div>
-      )}
+        <div className="flex gap-2">
+          <dt className="w-[4.5rem] shrink-0 font-semibold text-app-muted">Fälligkeit</dt>
+          <dd className="min-w-0 truncate font-medium text-app-text">{deadline}</dd>
+        </div>
+        <div className="flex gap-2">
+          <dt className="w-[4.5rem] shrink-0 font-semibold text-app-muted">Person</dt>
+          <dd className="min-w-0 truncate font-medium text-app-text">{person}</dd>
+        </div>
+      </dl>
     </article>
   );
 }

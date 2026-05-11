@@ -201,7 +201,7 @@ input, select, textarea { font-family: inherit; color: inherit; }
   background: var(--sidebar-bg); color: var(--sidebar-ink);
   border-right: 1px solid var(--border);
   display: flex; flex-direction: column;
-  width: 248px; transition: width .25s ease;
+  width: 232px; transition: width .25s ease;
   overflow-y: auto; overflow-x: hidden;
 }
 .hs-side.icononly { width: 76px; }

@@ -14,7 +14,7 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { DepartmentBoardColumn } from "@/types/departments";
 
 export type TaskBoardViewProps = {
@@ -130,6 +130,11 @@ export function TaskBoardView({
   const rows = enableRealtime ? live : initialRows;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -191,8 +196,8 @@ export function TaskBoardView({
     );
   }
 
-  return (
-    <DndContext sensors={sensors} onDragEnd={(e) => void onDragEnd(e)}>
+  const boardContent = (
+    <>
       {error ? (
         <p className="mb-4 rounded-xl border border-[#EC8580]/60 bg-[#FBC4C0]/35 px-4 py-2 text-sm font-medium text-[#8E2B27]">
           {error}
@@ -210,6 +215,16 @@ export function TaskBoardView({
           </BoardColumn>
         ))}
       </div>
+    </>
+  );
+
+  if (!mounted) {
+    return boardContent;
+  }
+
+  return (
+    <DndContext sensors={sensors} onDragEnd={(e) => void onDragEnd(e)}>
+      {boardContent}
     </DndContext>
   );
 }

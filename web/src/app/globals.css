@@ -9,7 +9,9 @@
     scroll-behavior: smooth;
   }
   body {
-    @apply antialiased;
+    @apply antialiased min-h-screen;
     font-feature-settings: "ss01", "cv11";
+    background-color: var(--bg);
+    color: var(--ink);
   }
 }

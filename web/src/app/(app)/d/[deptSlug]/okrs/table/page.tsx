@@ -2,7 +2,10 @@ import { OkrTableClient } from "@/components/okr/OkrTableClient";
 import { parseOkrFilters } from "@/lib/okr/filters";
 import { recordToURLSearchParams } from "@/lib/okr/search-params";
 import { mergeLayoutWidths } from "@/lib/tasks/main-table-columns";
-import { fetchDepartmentBySlug } from "@/lib/supabase/department-queries";
+import {
+  fetchBoardProjectOptionsForDepartment,
+  fetchDepartmentBySlug,
+} from "@/lib/supabase/department-queries";
 import { createClient } from "@/lib/supabase/server";
 import type { MainTableLayoutRow, TaskCustomColumnRow } from "@/types/main-table";
 import type { TaskRow } from "@/types/tasks";
@@ -39,6 +42,7 @@ export default async function DepartmentOkrsTablePage({
       : undefined;
   const merged = mergeLayoutWidths("okr", storedWidths, customCols);
   const layoutSyncKey = `${layoutRow?.updated_at ?? "0"}:${customCols.map((c) => c.id).join(",")}`;
+  const boardProjectOptions = await fetchBoardProjectOptionsForDepartment(dept.id);
 
   return (
     <div>
@@ -54,6 +58,7 @@ export default async function DepartmentOkrsTablePage({
         initialMergedWidths={merged}
         layoutSyncKey={layoutSyncKey}
         departmentId={dept.id}
+        boardProjectOptions={boardProjectOptions}
       />
     </div>
   );

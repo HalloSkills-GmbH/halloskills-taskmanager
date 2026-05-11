@@ -1,14 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Suspense, useMemo } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { Suspense, useMemo, useState, useTransition } from "react";
 import { SignOutButton } from "@/components/layout/SignOutButton";
 import { TopbarSearch } from "@/components/layout/TopbarSearch";
 import {
   DEFAULT_DEPARTMENT_LABELS,
   DEFAULT_DEPARTMENT_SLUGS_ORDER,
 } from "@/lib/navigation/default-departments";
+import { createDepartmentBoard } from "@/lib/workspace/actions";
 
 export type DepartmentNavItem = { id: string; name: string; slug: string };
 
@@ -162,6 +163,12 @@ export function ProductShell({
   children: React.ReactNode;
 }) {
   const pathname = usePathname() || "";
+  const router = useRouter();
+  const [collapsedDeptSlugs, setCollapsedDeptSlugs] = useState<Set<string>>(() => new Set());
+  const [createBoardForDept, setCreateBoardForDept] = useState<{ id: string; slug: string } | null>(null);
+  const [newBoardName, setNewBoardName] = useState("");
+  const [createBoardPending, startCreateBoard] = useTransition();
+  const [createBoardError, setCreateBoardError] = useState<string | null>(null);
   const initial = userEmail?.trim().charAt(0).toUpperCase() || "?";
   const displayName = userEmail?.split("@")[0]?.replace(/\./g, " ") || "Angemeldet";
 
@@ -181,6 +188,45 @@ export function ProductShell({
     });
     return [...core, ...extras];
   }, [departments, defaultSlugSet]);
+
+  const toggleDeptCollapsed = (slug: string) => {
+    setCollapsedDeptSlugs((prev) => {
+      const n = new Set(prev);
+      if (n.has(slug)) n.delete(slug);
+      else n.add(slug);
+      return n;
+    });
+  };
+
+  const openCreateBoardModal = (dept: { id: string; slug: string }) => {
+    setCreateBoardForDept(dept);
+    setNewBoardName("");
+    setCreateBoardError(null);
+  };
+
+  const closeCreateBoardModal = () => {
+    setCreateBoardForDept(null);
+    setNewBoardName("");
+    setCreateBoardError(null);
+  };
+
+  const handleCreateBoard = () => {
+    if (!createBoardForDept || !newBoardName.trim()) return;
+    setCreateBoardError(null);
+    startCreateBoard(async () => {
+      const res = await createDepartmentBoard({
+        departmentId: createBoardForDept.id,
+        name: newBoardName.trim(),
+      });
+      if (!res.ok) {
+        setCreateBoardError(res.message);
+        return;
+      }
+      router.push(`/d/${createBoardForDept.slug}/boards/${res.id}`);
+      router.refresh();
+      closeCreateBoardModal();
+    });
+  };
 
   const deptSubLink = (slug: string, href: string, label: string) => {
     const active = pathname === href || pathname.startsWith(`${href}/`);
@@ -217,8 +263,8 @@ export function ProductShell({
   };
 
   return (
-    <div className="hs-app min-h-screen">
-      <aside className="hs-side">
+    <div className="hs-app grid min-h-screen grid-cols-[248px_minmax(0,1fr)] bg-[var(--bg)]">
+      <aside className="hs-side w-[248px] max-w-[248px] shrink-0">
         <div className="flex flex-col border-b border-[var(--border)]/40">
           <div className="flex items-center gap-2.5 px-[18px] pt-[18px]">
             <Link href="/dashboard" className="hs-logo" title="HalloSkills">
@@ -269,34 +315,74 @@ export function ProductShell({
                 const base = `/d/${d.slug}`;
                 const inDept = pathname.startsWith(base);
                 const boards = d.id ? departmentBoardsByDeptId[d.id] ?? [] : [];
+                const deptCollapsed = collapsedDeptSlugs.has(d.slug);
                 return (
                   <div key={d.slug} className="mb-1">
-                    <div
-                      className={`flex items-center gap-2 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide ${
+                    <button
+                      type="button"
+                      onClick={() => toggleDeptCollapsed(d.slug)}
+                      aria-expanded={!deptCollapsed}
+                      className={`flex w-full cursor-pointer appearance-none items-center gap-2 border-0 bg-transparent px-3 py-1.5 text-left text-[11px] font-bold uppercase tracking-wide shadow-none outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
                         inDept ? "text-[var(--sidebar-active-ink)]" : "text-[var(--sidebar-muted)]"
                       }`}
                     >
+                      <svg
+                        width={14}
+                        height={14}
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        className={`shrink-0 transition-transform ${deptCollapsed ? "" : "rotate-90"}`}
+                        aria-hidden
+                      >
+                        <path
+                          d="M9 6l6 6-6 6"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
                       <IconBuilding active={inDept} />
                       <span className="truncate">{d.name}</span>
-                    </div>
+                    </button>
+                    {deptCollapsed ? null : (
                     <div className="flex flex-col gap-px">
                       {deptSubLink(d.slug, base, "Übersicht")}
-                      {deptSubLink(d.slug, `${base}/tasks`, "Aufgaben")}
                       {deptSubLink(d.slug, `${base}/okrs/table`, "OKRs")}
-                      {deptSubLink(d.slug, `${base}/boards`, "Board-Übersicht")}
-                      {boards.length > 0 ? (
-                        <>
-                          <div
-                            className={`px-3 py-1.5 pl-9 text-[10px] font-extrabold uppercase tracking-wide ${
-                              inDept ? "text-[var(--sidebar-active-ink)]/80" : "text-[var(--sidebar-muted)]"
-                            }`}
+                      {deptSubLink(d.slug, `${base}/tasks`, "Aufgaben")}
+                      <div
+                        className={`flex items-center justify-between px-3 py-1.5 pl-9 ${
+                          inDept ? "text-[var(--sidebar-active-ink)]/80" : "text-[var(--sidebar-muted)]"
+                        }`}
+                      >
+                        <span className="text-[10px] font-extrabold uppercase tracking-wide">
+                          Boards
+                        </span>
+                        {d.id ? (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openCreateBoardModal({ id: d.id, slug: d.slug });
+                            }}
+                            className="flex h-[18px] w-[18px] items-center justify-center rounded-md bg-transparent text-[var(--sidebar-muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--sidebar-ink)]"
+                            title="Neues Board erstellen"
+                            aria-label="Neues Board erstellen"
                           >
-                            Boards
-                          </div>
-                          {boards.map((b) => deptBoardLink(d.slug, b.id, b.name))}
-                        </>
-                      ) : null}
+                            <svg width={12} height={12} viewBox="0 0 24 24" fill="none" aria-hidden>
+                              <path
+                                d="M12 5v14M5 12h14"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                              />
+                            </svg>
+                          </button>
+                        ) : null}
+                      </div>
+                      {boards.map((b) => deptBoardLink(d.slug, b.id, b.name))}
                     </div>
+                    )}
                   </div>
                 );
               })}
@@ -318,7 +404,7 @@ export function ProductShell({
         </div>
       </aside>
 
-      <div className="hs-main">
+      <div className="hs-main flex min-h-0 min-w-0 flex-1 flex-col">
         <header className="hs-top">
           <div className="min-w-[12px] shrink" style={{ flex: 1 }} />
           <button
@@ -341,6 +427,61 @@ export function ProductShell({
 
         <main className="min-h-0 flex-1 overflow-auto bg-[var(--bg)]">{children}</main>
       </div>
+
+      {createBoardForDept ? (
+        <div
+          className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
+          onClick={closeCreateBoardModal}
+        >
+          <div
+            className="w-full max-w-md rounded-hs border border-[var(--border)] bg-[var(--card)] p-6 shadow-pop"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-4 text-lg font-bold text-[var(--ink)]">Neues Board erstellen</h3>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleCreateBoard();
+              }}
+            >
+              <label className="mb-4 block">
+                <span className="mb-1.5 block text-[12px] font-semibold uppercase tracking-wide text-[var(--ink-3)]">
+                  Board-Name
+                </span>
+                <input
+                  type="text"
+                  value={newBoardName}
+                  onChange={(e) => setNewBoardName(e.target.value)}
+                  placeholder="z. B. Sprint, Backlog, Projekte…"
+                  className="hs-input w-full"
+                  maxLength={120}
+                  autoFocus
+                />
+              </label>
+              {createBoardError ? (
+                <p className="mb-4 text-sm text-[var(--danger)]">{createBoardError}</p>
+              ) : null}
+              <div className="flex items-center justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={closeCreateBoardModal}
+                  className="hs-btn hs-btn-ghost"
+                  disabled={createBoardPending}
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="submit"
+                  disabled={createBoardPending || !newBoardName.trim()}
+                  className="hs-btn hs-btn-primary disabled:opacity-50"
+                >
+                  {createBoardPending ? "Erstellen…" : "Erstellen"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

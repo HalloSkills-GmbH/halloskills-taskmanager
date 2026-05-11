@@ -8,6 +8,8 @@ export const COL = {
   person: "person",
   link: "link",
   topic: "topic",
+  /** Abteilungs-OKR: Verknüpfung mit Board-Projekt (Kanban). */
+  boardProj: "boardProj",
   status: "status",
   start: "start",
   end: "end",
@@ -34,6 +36,7 @@ export const DEFAULT_WIDTHS_TASKS: Record<string, number> = {
 export const DEFAULT_WIDTHS_OKR: Record<string, number> = {
   ...DEFAULT_WIDTHS_TASKS,
   [COL.tipo]: 80,
+  [COL.boardProj]: 160,
   [COL.actions]: 72,
 };
 

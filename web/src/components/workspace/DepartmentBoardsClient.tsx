@@ -21,9 +21,9 @@ export function DepartmentBoardsClient({
   const [pending, start] = useTransition();
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <form
-        className="flex flex-wrap items-end gap-3 rounded-hs border border-[var(--border)] bg-[var(--card)] p-4 shadow-card"
+        className="flex flex-wrap items-center gap-2 rounded-hs border border-[var(--border)] bg-[var(--card)] px-3 py-2 shadow-card"
         onSubmit={(e) => {
           e.preventDefault();
           setErr(null);
@@ -39,24 +39,35 @@ export function DepartmentBoardsClient({
           });
         }}
       >
-        <label className="hs-field min-w-[14rem]">
-          <span className="hs-field-label">Neues Board</span>
-          <input
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Name (z. B. Sprint, Backlog)"
-            className="hs-input w-full"
-            maxLength={120}
-          />
-        </label>
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Neues Board / Projekt…"
+          className="hs-input min-w-0 flex-1 !py-2 !text-[13px]"
+          maxLength={120}
+          aria-label="Name des neuen Boards"
+        />
         <button
           type="submit"
           disabled={pending || !name.trim()}
-          className="hs-btn hs-btn-primary disabled:pointer-events-none disabled:opacity-50"
+          className="hs-iconbtn shrink-0 disabled:pointer-events-none disabled:opacity-50"
+          title="Board erstellen"
+          aria-label="Board erstellen"
         >
-          {pending ? "Erstellen…" : "Board erstellen"}
+          {pending ? (
+            <span className="text-[11px] text-[var(--muted)]">…</span>
+          ) : (
+            <svg width={18} height={18} viewBox="0 0 24 24" fill="none" aria-hidden>
+              <path
+                d="M12 5v14M5 12h14"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+              />
+            </svg>
+          )}
         </button>
-        {err ? <p className="w-full text-sm text-[var(--danger,#b42318)]">{err}</p> : null}
+        {err ? <p className="w-full basis-full text-sm text-[var(--danger,#b42318)]">{err}</p> : null}
       </form>
 
       {initialBoards.length === 0 ? (

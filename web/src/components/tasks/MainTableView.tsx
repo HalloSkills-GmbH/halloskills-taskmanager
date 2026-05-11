@@ -42,6 +42,20 @@ const STATUSES = [
 
 const ITEM_KINDS = ["task", "objective", "key_result"] as const;
 
+function okrItemKindsForDepth(depth: number): (typeof ITEM_KINDS)[number][] {
+  if (depth === 0) return ["objective"];
+  if (depth === 1) return ["key_result"];
+  return ["task"];
+}
+
+function subtaskButtonTitle(mode: "tasks" | "okr", parent: TaskRow): string {
+  if (mode !== "okr") return "Unteraufgabe";
+  const k = normalizeItemKind(parent);
+  if (k === "objective") return "Key Result hinzufügen";
+  if (k === "key_result") return "Aufgabe hinzufügen";
+  return "Unteraufgabe";
+}
+
 type GroupBy = "none" | "topic" | "status";
 
 export type MainTableGroupBy = GroupBy;
@@ -69,6 +83,8 @@ export type MainTableViewProps = {
   taskSort?: MainTableTaskSort;
   /** Kein „Gruppieren“-Select in der Tabellen-Zeile (wird z. B. von der Toolbar übernommen). */
   suppressBuiltInGroupUi?: boolean;
+  /** Nur Abteilungs-OKRs: Dropdown, um Aufgaben einem Board-Projekt zuzuordnen. */
+  boardProjectOptions?: { id: string; label: string }[];
 };
 
 type FlatRow = { node: TaskTreeNode; depth: number };
@@ -165,10 +181,16 @@ function StatusCell({
   );
 }
 
-function orderedColumnKeys(mode: "tasks" | "okr", customColumns: TaskCustomColumnRow[]): string[] {
+function orderedColumnKeys(
+  mode: "tasks" | "okr",
+  customColumns: TaskCustomColumnRow[],
+  includeOkrBoardProject: boolean,
+): string[] {
   const keys: string[] = [COL.grab, COL.name];
   if (mode === "okr") keys.push(COL.tipo);
-  keys.push(COL.person, COL.link, COL.topic);
+  keys.push(COL.person, COL.link);
+  if (mode === "okr" && includeOkrBoardProject) keys.push(COL.boardProj);
+  keys.push(COL.topic);
   for (const c of [...customColumns].sort((a, b) => a.sort_order - b.sort_order)) {
     keys.push(customColWidthKey(c.col_key));
   }
@@ -183,6 +205,7 @@ function headerLabel(mode: "tasks" | "okr", key: string, customColumns: TaskCust
   if (key === COL.tipo) return "Typ";
   if (key === COL.person) return "Person";
   if (key === COL.link) return "OKR";
+  if (key === COL.boardProj) return "Board / Projekt";
   if (key === COL.topic) return "Thema";
   if (key === COL.status) return "Status";
   if (key === COL.start) return "Start";
@@ -212,6 +235,7 @@ export function MainTableView({
   hiddenColumnKeys = [],
   taskSort = "none",
   suppressBuiltInGroupUi = false,
+  boardProjectOptions,
 }: MainTableViewProps) {
   const router = useRouter();
   const storageKey = `main-${mode}-${departmentId ?? "all"}`;
@@ -247,9 +271,10 @@ export function MainTableView({
     layoutSyncKey,
   );
 
+  const includeOkrBoardProject = mode === "okr" && boardProjectOptions !== undefined;
   const colKeys = useMemo(
-    () => orderedColumnKeys(mode, customColumns),
-    [mode, customColumns],
+    () => orderedColumnKeys(mode, customColumns, includeOkrBoardProject),
+    [mode, customColumns, includeOkrBoardProject],
   );
   const hiddenSet = useMemo(() => new Set(hiddenColumnKeys), [hiddenColumnKeys]);
   const visibleColKeys = useMemo(
@@ -376,6 +401,63 @@ export function MainTableView({
       setBusy(true);
       setError(null);
       const id = nextTaskId(allRows);
+
+      if (mode === "okr") {
+        const pk = normalizeItemKind(parent);
+        if (pk === "objective") {
+          const res = await insertTaskRow({
+            id,
+            name: "Neues Key Result",
+            item_kind: "key_result",
+            parent_id: parent.id,
+            okr_objective_id: parent.id,
+            okr_key_result_id: null,
+            start_date: parent.start_date,
+            end_date: parent.end_date,
+            topic: parent.topic,
+            status: parent.status || "Planned",
+            progress: 0,
+            notes: "",
+            assigned: parent.assigned ?? "",
+            department_id: parent.department_id ?? departmentId ?? null,
+            project_id: null,
+            dependencies: [],
+            attachments: [],
+            custom_fields: {},
+          });
+          setBusy(false);
+          if (!res.ok) setError(res.message);
+          else setExpandedIds((prev) => new Set(prev).add(parent.id));
+          return;
+        }
+        if (pk === "key_result") {
+          const res = await insertTaskRow({
+            id,
+            name: "Neue Aufgabe (OKR)",
+            item_kind: "task",
+            parent_id: parent.id,
+            okr_objective_id: parent.okr_objective_id ?? null,
+            okr_key_result_id: parent.id,
+            start_date: parent.start_date,
+            end_date: parent.end_date,
+            topic: parent.topic,
+            status: parent.status || "Planned",
+            progress: 0,
+            notes: "",
+            assigned: parent.assigned ?? "",
+            department_id: parent.department_id ?? departmentId ?? null,
+            project_id: null,
+            dependencies: [],
+            attachments: [],
+            custom_fields: readCustomFields(parent),
+          });
+          setBusy(false);
+          if (!res.ok) setError(res.message);
+          else setExpandedIds((prev) => new Set(prev).add(parent.id));
+          return;
+        }
+      }
+
       const res = await insertTaskRow({
         id,
         name: "Neue Unteraufgabe",
@@ -390,6 +472,8 @@ export function MainTableView({
         assigned: parent.assigned,
         okr_objective_id: parent.okr_objective_id,
         okr_key_result_id: parent.okr_key_result_id,
+        department_id: parent.department_id ?? departmentId ?? null,
+        project_id: parent.project_id ?? null,
         dependencies: [],
         attachments: [],
         custom_fields: readCustomFields(parent),
@@ -398,7 +482,7 @@ export function MainTableView({
       if (!res.ok) setError(res.message);
       else setExpandedIds((prev) => new Set(prev).add(parent.id));
     },
-    [allRows],
+    [allRows, mode, departmentId],
   );
 
   const removeRow = useCallback(async (id: number) => {
@@ -891,7 +975,7 @@ export function MainTableView({
                                 <button
                                   type="button"
                                   className="hs-iconbtn"
-                                  title="Unteraufgabe"
+                                  title={subtaskButtonTitle(mode, r)}
                                   disabled={busy}
                                   onClick={(e) => {
                                     e.stopPropagation();
@@ -934,18 +1018,24 @@ export function MainTableView({
                           <div className="hs-mcell">
                             <select
                               className="hs-select w-full min-w-0 !text-[12px]"
-                              defaultValue={(r.item_kind || "task").toLowerCase()}
+                              value={(r.item_kind || "task").toLowerCase()}
                               onChange={async (e) => {
                                 await patch(r.id, {
                                   item_kind: e.target.value as (typeof ITEM_KINDS)[number],
                                 });
                               }}
                             >
-                              {ITEM_KINDS.map((k) => (
-                                <option key={k} value={k}>
-                                  {k}
-                                </option>
-                              ))}
+                              {(() => {
+                                const cur = (r.item_kind || "task").toLowerCase() as (typeof ITEM_KINDS)[number];
+                                const base = okrItemKindsForDepth(depth);
+                                const list =
+                                  !base.includes(cur) && ITEM_KINDS.includes(cur) ? [...base, cur] : base;
+                                return list.map((k) => (
+                                  <option key={k} value={k}>
+                                    {k}
+                                  </option>
+                                ));
+                              })()}
                             </select>
                           </div>
                         ) : null}
@@ -965,6 +1055,29 @@ export function MainTableView({
                         ) : null}
                         {!hiddenSet.has(COL.link) ? (
                           <div className="hs-mcell min-w-0">{linkCell}</div>
+                        ) : null}
+                        {mode === "okr" && includeOkrBoardProject && !hiddenSet.has(COL.boardProj) ? (
+                          <div className="hs-mcell min-w-0">
+                            {isOperationalRow(r) ? (
+                              <select
+                                className="hs-select w-full !text-[11px]"
+                                value={r.project_id ?? ""}
+                                onChange={(e) => {
+                                  const v = e.target.value;
+                                  void patch(r.id, { project_id: v ? v : null });
+                                }}
+                              >
+                                <option value="">— kein Board-Projekt —</option>
+                                {(boardProjectOptions ?? []).map((o) => (
+                                  <option key={o.id} value={o.id}>
+                                    {o.label}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <span className="text-[11px] text-[var(--muted)]">—</span>
+                            )}
+                          </div>
                         ) : null}
                         {!hiddenSet.has(COL.topic) ? (
                           <div className="hs-mcell">

@@ -15,6 +15,7 @@ type Props = {
   initialMergedWidths: Record<string, number>;
   layoutSyncKey: string;
   departmentId?: string | null;
+  boardProjectOptions?: { id: string; label: string }[];
 };
 
 export function OkrTableClient({
@@ -24,6 +25,7 @@ export function OkrTableClient({
   initialMergedWidths,
   layoutSyncKey,
   departmentId = null,
+  boardProjectOptions,
 }: Props) {
   const supabase = useMemo(() => createClient(), []);
   const [busy, setBusy] = useState(false);
@@ -57,8 +59,10 @@ export function OkrTableClient({
       notes: "",
       topic: "Ops",
       assigned: "",
+      parent_id: null,
       okr_objective_id: null,
       okr_key_result_id: null,
+      department_id: departmentId ?? null,
       dependencies: [],
       attachments: [],
     });
@@ -118,8 +122,10 @@ export function OkrTableClient({
       notes: "",
       topic: obj.topic,
       assigned: "",
+      parent_id: oid,
       okr_objective_id: oid,
       okr_key_result_id: null,
+      department_id: departmentId ?? null,
       dependencies: [],
       attachments: [],
     });
@@ -180,6 +186,7 @@ export function OkrTableClient({
         initialMergedWidths={initialMergedWidths}
         layoutSyncKey={layoutSyncKey}
         departmentId={departmentId}
+        boardProjectOptions={boardProjectOptions}
       />
     </div>
   );

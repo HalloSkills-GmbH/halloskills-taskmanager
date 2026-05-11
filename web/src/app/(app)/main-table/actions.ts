@@ -6,10 +6,26 @@ import { createClient } from "@/lib/supabase/server";
 
 const widthsSchema = z.record(z.string(), z.number().min(32).max(800));
 
+const COLUMN_TYPES = [
+  "text",
+  "date",
+  "status",
+  "dropdown",
+  "person",
+  "number",
+  "file",
+  "checkbox",
+  "formula",
+  "timeline",
+  "priority",
+] as const;
+
 const addColumnSchema = z.object({
   label: z.string().min(1).max(80),
-  col_type: z.enum(["text", "date", "status"]),
+  col_type: z.enum(COLUMN_TYPES),
   status_options: z.array(z.string().min(1).max(80)).max(20).optional(),
+  dropdown_options: z.array(z.string().min(1).max(80)).max(20).optional(),
+  priority_options: z.array(z.string().min(1).max(80)).max(10).optional(),
 });
 
 function slugFromLabel(label: string): string {
@@ -55,9 +71,15 @@ export async function addTaskCustomColumn(
   if (!parsed.success) {
     return { ok: false, message: parsed.error.issues.map((i) => i.message).join(", ") };
   }
-  const { label, col_type, status_options } = parsed.data;
+  const { label, col_type, status_options, dropdown_options, priority_options } = parsed.data;
   if (col_type === "status" && (!status_options || status_options.length === 0)) {
     return { ok: false, message: "Status-Spalte braucht mindestens eine Option" };
+  }
+  if (col_type === "dropdown" && (!dropdown_options || dropdown_options.length === 0)) {
+    return { ok: false, message: "Dropdown-Spalte braucht mindestens eine Option" };
+  }
+  if (col_type === "priority" && (!priority_options || priority_options.length === 0)) {
+    return { ok: false, message: "Priorität-Spalte braucht mindestens eine Option" };
   }
 
   const supabase = await createClient();
@@ -72,11 +94,18 @@ export async function addTaskCustomColumn(
   const baseKey = slugFromLabel(label);
   const col_key = `${baseKey}_${Math.random().toString(36).slice(2, 7)}`;
 
+  const optionsField = (() => {
+    if (col_type === "status") return status_options ?? [];
+    if (col_type === "dropdown") return dropdown_options ?? [];
+    if (col_type === "priority") return priority_options ?? ["Niedrig", "Mittel", "Hoch", "Kritisch"];
+    return null;
+  })();
+
   const { error } = await supabase.from("task_custom_columns").insert({
     col_key,
     label: label.trim(),
     col_type,
-    status_options: col_type === "status" ? status_options ?? [] : null,
+    status_options: optionsField,
     sort_order: nextOrder,
   });
   if (error) return { ok: false, message: error.message };

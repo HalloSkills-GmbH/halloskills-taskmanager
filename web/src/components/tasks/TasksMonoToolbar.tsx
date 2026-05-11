@@ -138,7 +138,7 @@ export function TasksMonoToolbar({
         onClick={() => void onCreateTask()}
         className="hs-btn hs-btn-primary !py-1.5 !text-[12px] disabled:pointer-events-none disabled:opacity-50"
       >
-        {creating ? "…" : "Neue Aufgabe"}
+        {creating ? "…" : "Neue Gruppe"}
       </button>
 
       <form

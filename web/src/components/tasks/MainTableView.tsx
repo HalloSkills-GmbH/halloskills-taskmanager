@@ -29,8 +29,12 @@ import {
 import { statusVisual, topicAccent } from "@/lib/ui/task-status-visual";
 import type { TaskCustomColumnRow } from "@/types/main-table";
 import type { TaskRow } from "@/types/tasks";
+import type { StatusOption } from "@/types/profiles";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { StatusConfigurator } from "./StatusConfigurator";
+import { PersonPicker } from "./PersonPicker";
+import type { AssigneeOption } from "@/types/profiles";
 
 const STATUSES = [
   "Not started",
@@ -85,6 +89,8 @@ export type MainTableViewProps = {
   suppressBuiltInGroupUi?: boolean;
   /** Nur Abteilungs-OKRs: Dropdown, um Aufgaben einem Board-Projekt zuzuordnen. */
   boardProjectOptions?: { id: string; label: string }[];
+  /** Verfügbare Personen/Gruppen für den PersonPicker. */
+  assigneeOptions?: AssigneeOption[];
 };
 
 type FlatRow = { node: TaskTreeNode; depth: number };
@@ -232,6 +238,7 @@ export function MainTableView({
   taskSort = "none",
   suppressBuiltInGroupUi = false,
   boardProjectOptions,
+  assigneeOptions = [],
 }: MainTableViewProps) {
   const router = useRouter();
   const storageKey = `main-${mode}-${departmentId ?? "all"}`;
@@ -254,11 +261,21 @@ export function MainTableView({
   const [notesRow, setNotesRow] = useState<TaskRow | null>(null);
   const [notesDraft, setNotesDraft] = useState("");
   const [addColOpen, setAddColOpen] = useState(false);
+  const [addColStep, setAddColStep] = useState<"select" | "configure">("select");
   const [newColLabel, setNewColLabel] = useState("");
-  const [newColType, setNewColType] = useState<"text" | "date" | "status">("text");
+  const [newColType, setNewColType] = useState<
+    "text" | "date" | "status" | "dropdown" | "person" | "number" | "file" | "checkbox" | "formula" | "timeline" | "priority"
+  >("text");
   const [newColStatusOpts, setNewColStatusOpts] = useState("Offen, Erledigt");
+  const [newColDropdownOpts, setNewColDropdownOpts] = useState("Option 1, Option 2");
+  const [newColPriorityOpts, setNewColPriorityOpts] = useState("Niedrig, Mittel, Hoch, Kritisch");
   const [addColBusy, setAddColBusy] = useState(false);
   const [colMenuOpen, setColMenuOpen] = useState<string | null>(null);
+  const [editingGroup, setEditingGroup] = useState<{ key: string; color: string } | null>(null);
+  const [editGroupName, setEditGroupName] = useState("");
+  const [editGroupColor, setEditGroupColor] = useState("#00c875");
+  const [statusConfigOpen, setStatusConfigOpen] = useState<string | null>(null);
+  const [boardStatuses, setBoardStatuses] = useState<Record<string, StatusOption[]>>({});
 
   const { widths, updateWidthImmediate, customColumns } = useMainTableSync(
     mode,
@@ -576,17 +593,24 @@ export function MainTableView({
   const submitNewColumn = async () => {
     setAddColBusy(true);
     setError(null);
-    const opts =
+    const statusOpts =
       newColType === "status"
-        ? newColStatusOpts
-            .split(",")
-            .map((s) => s.trim())
-            .filter(Boolean)
+        ? newColStatusOpts.split(",").map((s) => s.trim()).filter(Boolean)
+        : undefined;
+    const dropdownOpts =
+      newColType === "dropdown"
+        ? newColDropdownOpts.split(",").map((s) => s.trim()).filter(Boolean)
+        : undefined;
+    const priorityOpts =
+      newColType === "priority"
+        ? newColPriorityOpts.split(",").map((s) => s.trim()).filter(Boolean)
         : undefined;
     const res = await addTaskCustomColumn({
       label: newColLabel.trim(),
       col_type: newColType,
-      status_options: opts,
+      status_options: statusOpts,
+      dropdown_options: dropdownOpts,
+      priority_options: priorityOpts,
     });
     setAddColBusy(false);
     if (!res.ok) {
@@ -594,9 +618,12 @@ export function MainTableView({
       return;
     }
     setAddColOpen(false);
+    setAddColStep("select");
     setNewColLabel("");
     setNewColType("text");
     setNewColStatusOpts("Offen, Erledigt");
+    setNewColDropdownOpts("Option 1, Option 2");
+    setNewColPriorityOpts("Niedrig, Mittel, Hoch, Kritisch");
     router.refresh();
   };
 
@@ -631,62 +658,151 @@ export function MainTableView({
       {addColOpen ? (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-[var(--ink)]/30 p-4 backdrop-blur-[2px]"
-          onClick={() => setAddColOpen(false)}
+          onClick={() => { setAddColOpen(false); setAddColStep("select"); }}
         >
           <div
-            className="hs-modal max-w-md"
+            className="w-full max-w-lg overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-pop"
             onClick={(e) => e.stopPropagation()}
             role="dialog"
           >
-            <div className="hs-modal-head">
-              <h2 className="hs-modal-title">Spalte hinzufügen</h2>
-            </div>
-            <div className="hs-modal-body space-y-4">
-              <label className="hs-field">
-                <span className="hs-field-label">Bezeichnung</span>
-                <input
-                  className="hs-input w-full"
-                  value={newColLabel}
-                  onChange={(e) => setNewColLabel(e.target.value)}
-                  placeholder="z. B. Review-Datum"
-                />
-              </label>
-              <label className="hs-field">
-                <span className="hs-field-label">Typ</span>
-                <select
-                  className="hs-select w-full"
-                  value={newColType}
-                  onChange={(e) => setNewColType(e.target.value as typeof newColType)}
-                >
-                  <option value="text">Text</option>
-                  <option value="date">Datum</option>
-                  <option value="status">Status (eigene Optionen)</option>
-                </select>
-              </label>
-              {newColType === "status" ? (
-                <label className="hs-field">
-                  <span className="hs-field-label">Optionen (kommagetrennt)</span>
-                  <input
-                    className="hs-input w-full"
-                    value={newColStatusOpts}
-                    onChange={(e) => setNewColStatusOpts(e.target.value)}
-                  />
-                </label>
-              ) : null}
-            </div>
-            <div className="hs-modal-foot">
-              <button type="button" className="hs-btn hs-btn-ghost" onClick={() => setAddColOpen(false)}>
-                Abbrechen
-              </button>
-              <button
-                type="button"
-                className="hs-btn hs-btn-primary"
-                disabled={addColBusy || !newColLabel.trim()}
-                onClick={() => void submitNewColumn()}
-              >
-                {addColBusy ? "…" : "Anlegen"}
-              </button>
-            </div>
+            {addColStep === "select" ? (
+              <>
+                <div className="border-b border-[var(--border)] px-5 py-4">
+                  <h2 className="text-[15px] font-bold text-[var(--ink)]">Spalte hinzufügen</h2>
+                </div>
+                <div className="max-h-[60vh] overflow-y-auto p-5">
+                  <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-[var(--muted)]">Überblick</p>
+                  <div className="mb-5 grid grid-cols-2 gap-2">
+                    {[
+                      { type: "status", label: "Status", color: "#00c875", icon: "M4 6h16M4 12h12M4 18h8" },
+                      { type: "dropdown", label: "Drop-down", color: "#00c875", icon: "M6 9l6 6 6-6" },
+                      { type: "text", label: "Text", color: "#fdab3d", icon: "M4 6h16M4 12h16M4 18h10" },
+                      { type: "date", label: "Datum", color: "#00c875", icon: "M8 7V3m8 4V3M3 11h18M5 5h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" },
+                      { type: "person", label: "Personen", color: "#579bfc", icon: "M16 14a4 4 0 10-8 0M12 10a3 3 0 100-6 3 3 0 000 6z" },
+                      { type: "number", label: "Zahlen", color: "#a25ddc", icon: "M7 20l4-16m2 16l4-16M6 9h14M4 15h14" },
+                    ].map((col) => (
+                      <button
+                        key={col.type}
+                        type="button"
+                        onClick={() => { setNewColType(col.type as typeof newColType); setAddColStep("configure"); }}
+                        className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:border-[var(--border-2)] hover:bg-[var(--hover)]"
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md" style={{ background: col.color }}>
+                          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" className="text-white">
+                            <path d={col.icon} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </span>
+                        <span className="text-[13px] font-medium text-[var(--ink)]">{col.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <p className="mb-3 text-[11px] font-bold uppercase tracking-wide text-[var(--muted)]">Sehr nützlich</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {[
+                      { type: "file", label: "Datei", color: "#e2445c", icon: "M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8l-6-6zM14 2v6h6" },
+                      { type: "checkbox", label: "Checkbox", color: "#00c875", icon: "M9 11l3 3L22 4M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" },
+                      { type: "formula", label: "Formel", color: "#a25ddc", icon: "M12 2v4m0 12v4M4.93 4.93l2.83 2.83m8.48 8.48l2.83 2.83M2 12h4m12 0h4M4.93 19.07l2.83-2.83m8.48-8.48l2.83-2.83" },
+                      { type: "timeline", label: "Zeitleiste", color: "#a25ddc", icon: "M3 12h4l3-9 4 18 3-9h4" },
+                      { type: "priority", label: "Priority", color: "#ffcb00", icon: "M12 9v2m0 4h.01M5 19h14a2 2 0 001.84-2.77l-7-14a2 2 0 00-3.68 0l-7 14A2 2 0 005 19z" },
+                    ].map((col) => (
+                      <button
+                        key={col.type}
+                        type="button"
+                        onClick={() => { setNewColType(col.type as typeof newColType); setAddColStep("configure"); }}
+                        className="flex items-center gap-3 rounded-lg border border-[var(--border)] bg-[var(--surface)] p-3 text-left transition hover:border-[var(--border-2)] hover:bg-[var(--hover)]"
+                      >
+                        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md" style={{ background: col.color }}>
+                          <svg width={16} height={16} viewBox="0 0 24 24" fill="none" className="text-white">
+                            <path d={col.icon} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                          </svg>
+                        </span>
+                        <span className="text-[13px] font-medium text-[var(--ink)]">{col.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex justify-end border-t border-[var(--border)] px-5 py-3">
+                  <button type="button" className="hs-btn hs-btn-ghost" onClick={() => { setAddColOpen(false); setAddColStep("select"); }}>
+                    Abbrechen
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-3 border-b border-[var(--border)] px-5 py-4">
+                  <button
+                    type="button"
+                    onClick={() => setAddColStep("select")}
+                    className="flex h-7 w-7 items-center justify-center rounded-md text-[var(--muted)] transition hover:bg-[var(--hover)] hover:text-[var(--ink)]"
+                  >
+                    <svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+                      <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </button>
+                  <h2 className="text-[15px] font-bold text-[var(--ink)]">
+                    {newColType === "status" && "Status-Spalte"}
+                    {newColType === "dropdown" && "Dropdown-Spalte"}
+                    {newColType === "text" && "Text-Spalte"}
+                    {newColType === "date" && "Datum-Spalte"}
+                    {newColType === "person" && "Personen-Spalte"}
+                    {newColType === "number" && "Zahlen-Spalte"}
+                    {newColType === "file" && "Datei-Spalte"}
+                    {newColType === "checkbox" && "Checkbox-Spalte"}
+                    {newColType === "formula" && "Formel-Spalte"}
+                    {newColType === "timeline" && "Zeitleiste-Spalte"}
+                    {newColType === "priority" && "Priority-Spalte"}
+                  </h2>
+                </div>
+                <div className="space-y-4 p-5">
+                  <label className="block">
+                    <span className="mb-1.5 block text-[12px] font-semibold text-[var(--ink-3)]">Bezeichnung</span>
+                    <input
+                      className="hs-input w-full"
+                      value={newColLabel}
+                      onChange={(e) => setNewColLabel(e.target.value)}
+                      placeholder="z. B. Review-Datum"
+                      autoFocus
+                    />
+                  </label>
+                  {newColType === "status" ? (
+                    <label className="block">
+                      <span className="mb-1.5 block text-[12px] font-semibold text-[var(--ink-3)]">Status-Optionen (kommagetrennt)</span>
+                      <input className="hs-input w-full" value={newColStatusOpts} onChange={(e) => setNewColStatusOpts(e.target.value)} />
+                    </label>
+                  ) : null}
+                  {newColType === "dropdown" ? (
+                    <label className="block">
+                      <span className="mb-1.5 block text-[12px] font-semibold text-[var(--ink-3)]">Dropdown-Optionen (kommagetrennt)</span>
+                      <input className="hs-input w-full" value={newColDropdownOpts} onChange={(e) => setNewColDropdownOpts(e.target.value)} />
+                    </label>
+                  ) : null}
+                  {newColType === "priority" ? (
+                    <label className="block">
+                      <span className="mb-1.5 block text-[12px] font-semibold text-[var(--ink-3)]">Priorität-Optionen (kommagetrennt)</span>
+                      <input className="hs-input w-full" value={newColPriorityOpts} onChange={(e) => setNewColPriorityOpts(e.target.value)} />
+                    </label>
+                  ) : null}
+                  {newColType === "formula" ? (
+                    <p className="rounded-lg bg-[var(--surface-2)] p-3 text-[12px] text-[var(--muted)]">
+                      Formel-Spalten werden in einer späteren Version unterstützt.
+                    </p>
+                  ) : null}
+                </div>
+                <div className="flex justify-end gap-2 border-t border-[var(--border)] px-5 py-3">
+                  <button type="button" className="hs-btn hs-btn-ghost" onClick={() => { setAddColOpen(false); setAddColStep("select"); }}>
+                    Abbrechen
+                  </button>
+                  <button
+                    type="button"
+                    className="hs-btn hs-btn-primary"
+                    disabled={addColBusy || !newColLabel.trim()}
+                    onClick={() => void submitNewColumn()}
+                  >
+                    {addColBusy ? "…" : "Anlegen"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       ) : null}
@@ -744,6 +860,22 @@ export function MainTableView({
                         </svg>
                         Gruppieren nach
                       </button>
+                      {(key === COL.status || (isCustom && customColumns.find(c => `custom:${c.id}` === key)?.column_type === "status")) ? (
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] hover:bg-[var(--hover)]"
+                          onClick={() => {
+                            setStatusConfigOpen(key);
+                            setColMenuOpen(null);
+                          }}
+                        >
+                          <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                            <path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.5" />
+                          </svg>
+                          Status anpassen
+                        </button>
+                      ) : null}
                       {isCustom ? (
                         <>
                           <div className="my-1 border-t border-[var(--border)]" />
@@ -845,9 +977,19 @@ export function MainTableView({
                       </svg>
                     </span>
                   </button>
-                  <span className="hs-mgroup-title" style={{ color: accent }}>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingGroup({ key: g.key, color: accent });
+                      setEditGroupName(g.key);
+                      setEditGroupColor(accent);
+                    }}
+                    className="hs-mgroup-title cursor-pointer transition hover:opacity-80"
+                    style={{ color: accent }}
+                  >
                     {g.key}
-                  </span>
+                  </button>
                   <span className="hs-mgroup-count">
                     {count} {count === 1 ? "Aufgabe" : "Aufgaben"}
                   </span>
@@ -1029,31 +1171,6 @@ export function MainTableView({
                               ) : (
                                 <span className="hs-name-toggle" />
                               )}
-                              <button
-                                type="button"
-                                className={`hs-name-check ${isDoneStatus(r.status) ? "done" : ""}`}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  void patch(r.id, {
-                                    status: isDoneStatus(r.status) ? "In Progress" : "Complete",
-                                  });
-                                }}
-                                aria-label={
-                                  isDoneStatus(r.status) ? "Als offen markieren" : "Erledigt"
-                                }
-                              >
-                                {isDoneStatus(r.status) ? (
-                                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none">
-                                    <path
-                                      d="M5 12l4 4L19 6"
-                                      stroke="currentColor"
-                                      strokeWidth="2.6"
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                    />
-                                  </svg>
-                                ) : null}
-                              </button>
                               <div className="hs-name-main min-w-0">
                                 <input
                                   key={`n-${r.id}-${r.name}`}
@@ -1135,16 +1252,11 @@ export function MainTableView({
                         ) : null}
                         {!hiddenSet.has(COL.person) ? (
                           <div className="hs-mcell hs-mcell-center">
-                            <button type="button" className="hs-cell-person" title={r.assigned || ""}>
-                              <span
-                                className="hs-avatar flex h-[26px] w-[26px] items-center justify-center rounded-full text-[9px] font-bold text-white"
-                                style={{
-                                  background: topicAccent(r.assigned || "?"),
-                                }}
-                              >
-                                {initials(r.assigned)}
-                              </span>
-                            </button>
+                            <PersonPicker
+                              value={r.assigned}
+                              onChange={(v) => void patch(r.id, { assigned: v })}
+                              options={assigneeOptions}
+                            />
                           </div>
                         ) : null}
                         {!hiddenSet.has(COL.link) ? (
@@ -1175,7 +1287,23 @@ export function MainTableView({
                         ) : null}
                         {!hiddenSet.has(COL.topic) ? (
                           <div className="hs-mcell">
-                            <span className="hs-chip max-w-full !cursor-default truncate">{topic}</span>
+                            <input
+                              type="text"
+                              className="hs-input-inline w-full truncate bg-transparent text-[12px]"
+                              defaultValue={r.topic || ""}
+                              placeholder="Thema…"
+                              onBlur={(e) => {
+                                const v = e.target.value.trim();
+                                if (v !== (r.topic || "")) {
+                                  void patch(r.id, { topic: v || null });
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                            />
                           </div>
                         ) : null}
                         {customCells}
@@ -1188,27 +1316,56 @@ export function MainTableView({
                           </div>
                         ) : null}
                         {!hiddenSet.has(COL.start) ? (
-                          <div className="hs-mcell hs-mcell-meta text-[12px]">
-                            {formatDeShort(r.start_date)}
+                          <div className="hs-mcell hs-mcell-meta">
+                            <input
+                              type="date"
+                              className="hs-input-date w-full bg-transparent text-[11px]"
+                              value={r.start_date || ""}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                void patch(r.id, { start_date: v || null });
+                              }}
+                            />
                           </div>
                         ) : null}
                         {!hiddenSet.has(COL.end) ? (
                           <div className="hs-mcell hs-mcell-meta">
-                            <span className={`hs-due ${isDoneStatus(r.status) ? "done" : ""}`}>
-                              {formatDeShort(r.end_date)}
-                            </span>
+                            <input
+                              type="date"
+                              className={`hs-input-date w-full bg-transparent text-[11px] ${isDoneStatus(r.status) ? "line-through opacity-60" : ""}`}
+                              value={r.end_date || ""}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                void patch(r.id, { end_date: v || null });
+                              }}
+                            />
                           </div>
                         ) : null}
                         {!hiddenSet.has(COL.prog) ? (
                           <div className="hs-mcell hs-mcell-prog">
-                            <div className="hs-prog-cell w-full">
-                              <div className="hs-prog">
+                            <div className="hs-prog-cell group w-full">
+                              <div className="hs-prog cursor-pointer" onClick={(e) => {
+                                const rect = e.currentTarget.getBoundingClientRect();
+                                const pct = Math.round(((e.clientX - rect.left) / rect.width) * 100);
+                                void patch(r.id, { progress: Math.max(0, Math.min(100, pct)) });
+                              }}>
                                 <span
                                   className="hs-prog-fill bg-[var(--accent)]"
                                   style={{ width: `${prog}%` }}
                                 />
                               </div>
-                              <span className="hs-prog-num">{prog}%</span>
+                              <input
+                                type="number"
+                                min={0}
+                                max={100}
+                                className="hs-prog-input hidden w-12 text-right text-[11px] group-hover:inline"
+                                value={prog}
+                                onChange={(e) => {
+                                  const v = Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0));
+                                  void patch(r.id, { progress: v });
+                                }}
+                              />
+                              <span className="hs-prog-num group-hover:hidden">{prog}%</span>
                             </div>
                           </div>
                         ) : null}
@@ -1282,6 +1439,95 @@ export function MainTableView({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {editingGroup ? (
+        <div
+          className="fixed inset-0 z-[80] flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
+          onClick={() => setEditingGroup(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl border border-[var(--border)] bg-[var(--card)] p-5 shadow-pop"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="mb-4 text-[15px] font-bold text-[var(--ink)]">Gruppe bearbeiten</h3>
+            <div className="space-y-4">
+              <label className="block">
+                <span className="mb-1.5 block text-[12px] font-semibold text-[var(--ink-3)]">Name</span>
+                <input
+                  className="hs-input w-full"
+                  value={editGroupName}
+                  onChange={(e) => setEditGroupName(e.target.value)}
+                  autoFocus
+                />
+              </label>
+              <div>
+                <span className="mb-2 block text-[12px] font-semibold text-[var(--ink-3)]">Farbe</span>
+                <div className="grid grid-cols-8 gap-2">
+                  {[
+                    "#00c875", "#00d2d2", "#579bfc", "#a25ddc",
+                    "#e2445c", "#ff158a", "#ff5ac4", "#fdab3d",
+                    "#ffcb00", "#cab641", "#9cd326", "#037f4c",
+                    "#c4c4c4", "#808080", "#333333", "#175a63",
+                  ].map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setEditGroupColor(c)}
+                      className={`h-7 w-7 rounded-md transition ${
+                        editGroupColor === c ? "ring-2 ring-[var(--accent)] ring-offset-2" : ""
+                      }`}
+                      style={{ background: c }}
+                    />
+                  ))}
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-[12px] text-[var(--muted)]">Vorschau:</span>
+                <span className="font-bold" style={{ color: editGroupColor }}>{editGroupName || "Gruppe"}</span>
+              </div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" className="hs-btn hs-btn-ghost" onClick={() => setEditingGroup(null)}>
+                Abbrechen
+              </button>
+              <button
+                type="button"
+                className="hs-btn hs-btn-primary"
+                disabled={!editGroupName.trim()}
+                onClick={async () => {
+                  if (!editGroupName.trim()) return;
+                  const oldTopic = editingGroup.key;
+                  const newTopic = editGroupName.trim();
+                  for (const row of allRows) {
+                    if ((row.topic || "Ohne Thema") === oldTopic) {
+                      await patch(row.id, { topic: newTopic });
+                    }
+                  }
+                  setEditingGroup(null);
+                }}
+              >
+                Speichern
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {statusConfigOpen && departmentId ? (
+        <StatusConfigurator
+          boardId={departmentId}
+          columnKey={statusConfigOpen}
+          statuses={boardStatuses[statusConfigOpen] ?? STATUSES.map((s) => ({
+            id: s.toLowerCase().replace(/\s+/g, "_"),
+            label: s,
+            color: statusVisual(s).bg,
+          }))}
+          onClose={() => setStatusConfigOpen(null)}
+          onUpdate={(statuses) => {
+            setBoardStatuses((prev) => ({ ...prev, [statusConfigOpen]: statuses }));
+          }}
+        />
       ) : null}
     </div>
   );

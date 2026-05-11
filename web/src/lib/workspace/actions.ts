@@ -191,3 +191,137 @@ export async function deleteBoardProject(
   revalidateWorkspace();
   return { ok: true };
 }
+
+export async function updateBoardParent(
+  input: unknown,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const parsed = z
+    .object({
+      boardId: z.string().uuid(),
+      parentId: z.string().uuid().nullable(),
+    })
+    .safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues.map((i) => i.message).join(", ") };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("department_boards")
+    .update({ parent_id: parsed.data.parentId })
+    .eq("id", parsed.data.boardId);
+  if (error) return { ok: false, message: error.message };
+  revalidateWorkspace();
+  return { ok: true };
+}
+
+export async function updateDepartment(
+  input: unknown,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const parsed = z
+    .object({
+      id: z.string().uuid(),
+      name: z.string().min(1).max(120).optional(),
+      icon: z.string().max(50).optional(),
+      color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      sort_order: z.number().int().optional(),
+    })
+    .safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues.map((i) => i.message).join(", ") };
+  }
+  const supabase = await createClient();
+  const updateData: Record<string, unknown> = {};
+  if (parsed.data.name) updateData.name = parsed.data.name.trim();
+  if (parsed.data.icon) updateData.icon = parsed.data.icon;
+  if (parsed.data.color) updateData.color = parsed.data.color;
+  if (parsed.data.sort_order !== undefined) updateData.sort_order = parsed.data.sort_order;
+  
+  if (Object.keys(updateData).length === 0) {
+    return { ok: true };
+  }
+  
+  const { error } = await supabase
+    .from("departments")
+    .update(updateData)
+    .eq("id", parsed.data.id);
+  if (error) return { ok: false, message: error.message };
+  revalidateWorkspace();
+  return { ok: true };
+}
+
+export async function deleteDepartment(
+  input: unknown,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const parsed = z
+    .object({
+      id: z.string().uuid(),
+    })
+    .safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues.map((i) => i.message).join(", ") };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("departments")
+    .delete()
+    .eq("id", parsed.data.id);
+  if (error) return { ok: false, message: error.message };
+  revalidateWorkspace();
+  return { ok: true };
+}
+
+export async function updateDepartmentBoard(
+  input: unknown,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const parsed = z
+    .object({
+      id: z.string().uuid(),
+      name: z.string().min(1).max(120).optional(),
+      icon: z.string().max(50).optional(),
+      color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+      sort_order: z.number().int().optional(),
+    })
+    .safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues.map((i) => i.message).join(", ") };
+  }
+  const supabase = await createClient();
+  const updateData: Record<string, unknown> = {};
+  if (parsed.data.name) updateData.name = parsed.data.name.trim();
+  if (parsed.data.icon) updateData.icon = parsed.data.icon;
+  if (parsed.data.color) updateData.color = parsed.data.color;
+  if (parsed.data.sort_order !== undefined) updateData.sort_order = parsed.data.sort_order;
+  
+  if (Object.keys(updateData).length === 0) {
+    return { ok: true };
+  }
+  
+  const { error } = await supabase
+    .from("department_boards")
+    .update(updateData)
+    .eq("id", parsed.data.id);
+  if (error) return { ok: false, message: error.message };
+  revalidateWorkspace();
+  return { ok: true };
+}
+
+export async function deleteDepartmentBoard(
+  input: unknown,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  const parsed = z
+    .object({
+      id: z.string().uuid(),
+    })
+    .safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, message: parsed.error.issues.map((i) => i.message).join(", ") };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("department_boards")
+    .delete()
+    .eq("id", parsed.data.id);
+  if (error) return { ok: false, message: error.message };
+  revalidateWorkspace();
+  return { ok: true };
+}

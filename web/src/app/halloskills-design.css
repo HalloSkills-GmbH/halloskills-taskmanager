@@ -14,6 +14,30 @@
   --pad-y: 22px;
   --row-h: 44px;
   --gap: 10px;
+
+  /* Monday.com-style status colors */
+  --status-done: #00c875;
+  --status-working: #fdab3d;
+  --status-stuck: #e2445c;
+  --status-pending: #c4c4c4;
+  --status-review: #a25ddc;
+  --status-info: #579bfc;
+  
+  /* Priority colors */
+  --prio-critical: #e2445c;
+  --prio-high: #fdab3d;
+  --prio-medium: #579bfc;
+  --prio-low: #c4c4c4;
+
+  /* Group accent colors */
+  --group-blue: #579bfc;
+  --group-green: #00c875;
+  --group-orange: #fdab3d;
+  --group-purple: #a25ddc;
+  --group-red: #e2445c;
+  --group-yellow: #ffcb00;
+  --group-pink: #ff158a;
+  --group-teal: #037f4c;
 }
 
 /* Light "Sunrise" — warm, vivid */
@@ -220,6 +244,11 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .hs-nav-count { margin-left: auto; font-size: 11px; color: var(--sidebar-muted); font-weight: 600; }
 .hs-nav-item.active .hs-nav-count { color: var(--sidebar-active-ink); opacity: .8; }
 
+/* Drag & Drop für Boards */
+.hs-nav-item.dragging { opacity: 0.4; }
+.hs-nav-item[data-dragging="true"] { opacity: 0.4; }
+.drop-active { background: var(--accent-soft); border-radius: 8px; }
+
 .hs-side-groups { padding: 6px 10px; display: flex; flex-direction: column; gap: 2px; }
 .hs-group-row {
   display: flex; align-items: center; gap: 10px; padding: 8px 12px;
@@ -351,6 +380,27 @@ input, select, textarea { font-family: inherit; color: inherit; }
 }
 .hs-select:hover { border-color: var(--border-2); }
 
+/* Inline inputs for table cells */
+.hs-input-inline {
+  padding: 4px 8px; border: 1px solid transparent; border-radius: 6px;
+  font-size: 12.5px; font-weight: 500; color: var(--ink); outline: none;
+  transition: border-color .15s, background .15s;
+}
+.hs-input-inline:hover { background: var(--surface-2); }
+.hs-input-inline:focus { border-color: var(--accent); background: var(--card); }
+
+.hs-input-date {
+  padding: 4px 6px; border: 1px solid transparent; border-radius: 6px;
+  font-size: 11px; font-weight: 500; color: var(--ink-2); outline: none;
+  cursor: pointer; transition: border-color .15s;
+}
+.hs-input-date:hover { border-color: var(--border-2); }
+.hs-input-date:focus { border-color: var(--accent); }
+.hs-input-date::-webkit-calendar-picker-indicator {
+  cursor: pointer; opacity: 0.6; filter: var(--icon-filter, none);
+}
+.hs-input-date::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
 /* ────────── Pills, Atoms ────────── */
 .hs-pill {
   display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px;
@@ -361,9 +411,10 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .hs-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
 .hs-square { width: 7px; height: 7px; border-radius: 2px; flex: none; }
 
-.hs-pop { position: relative; display: inline-flex; }
+.hs-pop { position: relative; display: inline-flex; z-index: 1; }
+.hs-pop:focus-within { z-index: 60; }
 .hs-menu {
-  position: absolute; top: calc(100% + 6px); left: 0; z-index: 30;
+  position: absolute; top: calc(100% + 6px); left: 0; z-index: 100;
   background: var(--card); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: var(--shadow-pop); padding: 6px; min-width: 180px;
   display: flex; flex-direction: column; gap: 1px;
@@ -583,9 +634,17 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .hs-mtable-head {
   display: grid; gap: 0; padding: 10px 0 10px 8px;
   font-size: 10.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
-  color: var(--muted); position: sticky; top: 0; z-index: 5;
+  color: var(--muted); position: sticky; top: 0; z-index: 20;
   background: var(--bg);
 }
+
+/* Z-index layering for table cells with dropdowns */
+.hs-mtable .hs-mrow { position: relative; z-index: 1; }
+.hs-mtable .hs-mrow:focus-within { z-index: 50; }
+.hs-mtable .hs-mrow select,
+.hs-mtable .hs-mrow .hs-pop { position: relative; z-index: inherit; }
+.hs-mtable .hs-mrow select:focus,
+.hs-mtable .hs-mrow .hs-pop:focus-within { z-index: 60; }
 .hs-mtable-head > span { padding: 0 12px; border-right: 1px dashed var(--border); }
 .hs-mtable-head > span:last-child { border-right: 0; }
 
@@ -596,7 +655,7 @@ input, select, textarea { font-family: inherit; color: inherit; }
 }
 .hs-mgroup-head {
   display: flex; align-items: center; gap: 12px; padding: 12px 16px;
-  background: var(--card);
+  background: linear-gradient(90deg, color-mix(in oklab, var(--group-accent, var(--accent)) 8%, var(--card)), var(--card));
   border-bottom: 1px solid var(--border);
 }
 .hs-mgroup-toggle {
@@ -677,13 +736,6 @@ input, select, textarea { font-family: inherit; color: inherit; }
   color: var(--ink-3); flex: none;
 }
 .hs-name-toggle:hover { background: var(--surface-2); color: var(--ink); }
-.hs-name-check {
-  width: 18px; height: 18px; border-radius: 50%; border: 1.5px solid var(--border-2);
-  background: var(--card); display: grid; place-items: center; padding: 0; flex: none;
-  color: white; transition: all .12s;
-}
-.hs-name-check:hover { border-color: var(--positive); }
-.hs-name-check.done { background: var(--positive); border-color: var(--positive); }
 
 .hs-name-main {
   flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
@@ -724,6 +776,14 @@ input, select, textarea { font-family: inherit; color: inherit; }
   font-family: var(--font-mono); font-size: 11px; color: var(--ink-2);
   font-weight: 700; min-width: 30px; text-align: right;
 }
+.hs-prog-input {
+  font-family: var(--font-mono); font-size: 11px; color: var(--ink);
+  font-weight: 700; padding: 2px 4px; border: 1px solid var(--border);
+  border-radius: 4px; background: var(--card); outline: none;
+}
+.hs-prog-input:focus { border-color: var(--accent); }
+.hs-prog-input::-webkit-inner-spin-button,
+.hs-prog-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
 /* Due chip */
 .hs-due {
@@ -807,3 +867,61 @@ textarea.hs-input { resize: vertical; line-height: 1.5; }
 .hs-kr-arrow { color: var(--muted); text-align: center; font-weight: 700; }
 
 .hs-btn[disabled] { opacity: .4; cursor: not-allowed; box-shadow: none; }
+
+/* ────────── Status Colors ────────── */
+.hs-status-done { background: var(--status-done); color: white; }
+.hs-status-working { background: var(--status-working); color: white; }
+.hs-status-stuck { background: var(--status-stuck); color: white; }
+.hs-status-pending { background: var(--status-pending); color: #333; }
+.hs-status-review { background: var(--status-review); color: white; }
+.hs-status-info { background: var(--status-info); color: white; }
+
+/* ────────── Priority Colors ────────── */
+.hs-prio-critical { background: var(--prio-critical); color: white; border-color: var(--prio-critical); }
+.hs-prio-high { background: var(--prio-high); color: white; border-color: var(--prio-high); }
+.hs-prio-medium { background: var(--prio-medium); color: white; border-color: var(--prio-medium); }
+.hs-prio-low { background: var(--prio-low); color: #333; border-color: var(--prio-low); }
+
+/* ────────── Group Accent Helpers ────────── */
+.hs-group-blue { --group-accent: var(--group-blue); }
+.hs-group-green { --group-accent: var(--group-green); }
+.hs-group-orange { --group-accent: var(--group-orange); }
+.hs-group-purple { --group-accent: var(--group-purple); }
+.hs-group-red { --group-accent: var(--group-red); }
+.hs-group-yellow { --group-accent: var(--group-yellow); }
+.hs-group-pink { --group-accent: var(--group-pink); }
+.hs-group-teal { --group-accent: var(--group-teal); }
+
+/* ────────── Colored Badges ────────── */
+.hs-badge {
+  display: inline-flex; align-items: center; gap: 5px; padding: 4px 10px;
+  border-radius: 999px; font-size: 11px; font-weight: 700;
+}
+.hs-badge-blue { background: color-mix(in oklab, var(--group-blue) 18%, transparent); color: var(--group-blue); }
+.hs-badge-green { background: color-mix(in oklab, var(--group-green) 18%, transparent); color: var(--group-green); }
+.hs-badge-orange { background: color-mix(in oklab, var(--group-orange) 18%, transparent); color: #b5700f; }
+.hs-badge-purple { background: color-mix(in oklab, var(--group-purple) 18%, transparent); color: var(--group-purple); }
+.hs-badge-red { background: color-mix(in oklab, var(--group-red) 18%, transparent); color: var(--group-red); }
+.hs-badge-yellow { background: color-mix(in oklab, var(--group-yellow) 25%, transparent); color: #9a7800; }
+
+/* ────────── Hover Effects with Color ────────── */
+.hs-hover-accent:hover { background: var(--accent-soft); }
+.hs-hover-blue:hover { background: color-mix(in oklab, var(--group-blue) 12%, transparent); }
+.hs-hover-green:hover { background: color-mix(in oklab, var(--group-green) 12%, transparent); }
+
+/* ────────── Column Type Icons ────────── */
+.hs-colicon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 7px; flex: none;
+}
+.hs-colicon-status { background: #00c875; }
+.hs-colicon-text { background: #fdab3d; }
+.hs-colicon-date { background: #00c875; }
+.hs-colicon-person { background: #579bfc; }
+.hs-colicon-number { background: #a25ddc; }
+.hs-colicon-file { background: #e2445c; }
+.hs-colicon-checkbox { background: #00c875; }
+.hs-colicon-dropdown { background: #00c875; }
+.hs-colicon-formula { background: #a25ddc; }
+.hs-colicon-timeline { background: #a25ddc; }
+.hs-colicon-priority { background: #ffcb00; }

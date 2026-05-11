@@ -18,16 +18,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
     const { data: deptRows, error: deptErr } = await supabase
       .from("departments")
-      .select("id,name,slug")
+      .select("id,name,slug,icon,color")
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
     if (!deptErr && deptRows) {
-      departments = deptRows as DepartmentNavItem[];
+      departments = (deptRows as { id: string; name: string; slug: string; icon?: string; color?: string }[]).map((r) => ({
+        id: r.id,
+        name: r.name,
+        slug: r.slug,
+        icon: r.icon,
+        color: r.color,
+      }));
     }
 
     const { data: boardRows, error: boardErr } = await supabase
       .from("department_boards")
-      .select("id,name,department_id,is_group,parent_id")
+      .select("id,name,department_id,is_group,parent_id,icon,color")
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
     if (!boardErr && boardRows) {
@@ -38,6 +44,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         department_id: string;
         is_group?: boolean;
         parent_id?: string | null;
+        icon?: string;
+        color?: string;
       }[]) {
         const did = row.department_id;
         if (!byDept[did]) byDept[did] = [];
@@ -46,6 +54,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           name: row.name,
           isGroup: row.is_group ?? false,
           parentId: row.parent_id ?? null,
+          icon: row.icon,
+          color: row.color,
         });
       }
       departmentBoardsByDeptId = byDept;

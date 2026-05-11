@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useMemo } from "react";
+import { useSetPageTitle } from "@/components/layout/PageTitleContext";
 
 /** Tabs für `/d/:deptSlug/tasks` (Tabelle, Zeitleiste, Kalender). */
 export function DeptTasksShell({
@@ -15,6 +16,9 @@ export function DeptTasksShell({
   const pathname = usePathname() || "";
   const searchParams = useSearchParams();
   const qs = searchParams.toString();
+
+  const capitalizedSlug = deptSlug.charAt(0).toUpperCase() + deptSlug.slice(1);
+  useSetPageTitle(`Aufgaben · ${capitalizedSlug}`);
 
   const tabs = useMemo(() => {
     const base = `/d/${deptSlug}/tasks`;
@@ -44,10 +48,10 @@ export function DeptTasksShell({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--bg)]">
-      <header className="border-b border-[var(--border)] px-[var(--pad-x)] pb-0 pt-6">
-        <div className="mx-auto max-w-[1680px]">
+      <header className="border-b border-[var(--border)] px-[var(--pad-x)] py-3">
+        <div className="mx-auto flex max-w-[1680px] items-center gap-4">
           <nav
-            className="hs-tabs inline-flex w-full max-w-4xl flex-wrap gap-y-1"
+            className="hs-tabs inline-flex flex-wrap gap-y-1"
             aria-label={`Aufgaben-Ansichten (${deptSlug})`}
           >
             {tabs.map((t) => {

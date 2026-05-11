@@ -108,10 +108,6 @@ function initials(s: string | null | undefined): string {
   return t.slice(0, 2).toUpperCase();
 }
 
-function nextTaskId(all: TaskRow[]): number {
-  return all.length ? Math.max(...all.map((r) => r.id)) + 1 : 1;
-}
-
 function isDoneStatus(s: string | null | undefined): boolean {
   return (s || "").toLowerCase().includes("complete");
 }
@@ -262,6 +258,7 @@ export function MainTableView({
   const [newColType, setNewColType] = useState<"text" | "date" | "status">("text");
   const [newColStatusOpts, setNewColStatusOpts] = useState("Offen, Erledigt");
   const [addColBusy, setAddColBusy] = useState(false);
+  const [colMenuOpen, setColMenuOpen] = useState<string | null>(null);
 
   const { widths, updateWidthImmediate, customColumns } = useMainTableSync(
     mode,
@@ -357,6 +354,13 @@ export function MainTableView({
     saveExpandedIds(storageKey, expandedIds);
   }, [expandedIds, expandInit, storageKey]);
 
+  useEffect(() => {
+    if (!colMenuOpen) return;
+    const handleClick = () => setColMenuOpen(null);
+    document.addEventListener("click", handleClick);
+    return () => document.removeEventListener("click", handleClick);
+  }, [colMenuOpen]);
+
   const patch = useCallback(async (id: number, patchIn: Record<string, unknown>) => {
     setError(null);
     const res = await updateTaskFields({ id, ...patchIn });
@@ -400,13 +404,11 @@ export function MainTableView({
     async (parent: TaskRow) => {
       setBusy(true);
       setError(null);
-      const id = nextTaskId(allRows);
 
       if (mode === "okr") {
         const pk = normalizeItemKind(parent);
         if (pk === "objective") {
           const res = await insertTaskRow({
-            id,
             name: "Neues Key Result",
             item_kind: "key_result",
             parent_id: parent.id,
@@ -432,7 +434,6 @@ export function MainTableView({
         }
         if (pk === "key_result") {
           const res = await insertTaskRow({
-            id,
             name: "Neue Aufgabe (OKR)",
             item_kind: "task",
             parent_id: parent.id,
@@ -459,7 +460,6 @@ export function MainTableView({
       }
 
       const res = await insertTaskRow({
-        id,
         name: "Neue Unteraufgabe",
         item_kind: "task",
         parent_id: parent.id,
@@ -482,7 +482,7 @@ export function MainTableView({
       if (!res.ok) setError(res.message);
       else setExpandedIds((prev) => new Set(prev).add(parent.id));
     },
-    [allRows, mode, departmentId],
+    [mode, departmentId],
   );
 
   const removeRow = useCallback(async (id: number) => {
@@ -490,6 +490,43 @@ export function MainTableView({
     const res = await deleteTaskRow(id);
     if (!res.ok) setError(res.message);
   }, []);
+
+  const addTaskToGroup = useCallback(
+    async (groupKey: string) => {
+      setBusy(true);
+      setError(null);
+      const today = new Date().toISOString().slice(0, 10);
+      const end = new Date();
+      end.setDate(end.getDate() + 7);
+
+      const itemKind = mode === "okr" ? "objective" : "task";
+      const topicVal = groupBy === "topic" ? groupKey : "Ops";
+      const statusVal = groupBy === "status" ? groupKey : "Planned";
+
+      const res = await insertTaskRow({
+        name: mode === "okr" ? "Neues Objective" : "Neue Aufgabe",
+        item_kind: itemKind,
+        parent_id: null,
+        okr_objective_id: null,
+        okr_key_result_id: null,
+        start_date: today,
+        end_date: end.toISOString().slice(0, 10),
+        topic: topicVal,
+        status: statusVal,
+        progress: 0,
+        notes: "",
+        assigned: "",
+        department_id: departmentId ?? null,
+        project_id: null,
+        dependencies: [],
+        attachments: [],
+        custom_fields: {},
+      });
+      setBusy(false);
+      if (!res.ok) setError(res.message);
+    },
+    [mode, groupBy, departmentId],
+  );
 
   const onResizeMouseDown = useCallback(
     (e: React.MouseEvent, colKey: string) => {
@@ -578,37 +615,6 @@ export function MainTableView({
 
   return (
     <div className="space-y-3">
-      <div className="hs-toolbar !mb-0">
-        <div className="left flex flex-wrap items-center gap-2">
-          {suppressBuiltInGroupUi ? null : (
-            <label className="flex items-center gap-2 text-[12.5px] font-semibold text-[var(--ink-3)]">
-              Gruppieren
-              <select
-                value={groupBy}
-                onChange={(e) => setGroupBy(e.target.value as GroupBy)}
-                className="hs-select !py-1.5"
-              >
-                <option value="none">Keine Gruppe</option>
-                <option value="topic">Thema</option>
-                <option value="status">Status</option>
-              </select>
-            </label>
-          )}
-          <button
-            type="button"
-            className="hs-btn hs-btn-ghost !py-1.5 !text-[12px]"
-            onClick={() => setAddColOpen(true)}
-          >
-            + Spalte
-          </button>
-        </div>
-        <div className="right">
-          <span className="text-[12.5px] font-semibold text-[var(--muted)]">
-            {projectedRows.length} sichtbar · {allRows.length} in der DB
-          </span>
-        </div>
-      </div>
-
       {error ? (
         <div
           className="rounded-xl border px-4 py-2.5 text-sm font-medium"
@@ -691,24 +697,112 @@ export function MainTableView({
         </p>
       ) : (
         <div className="hs-mtable overflow-x-auto">
-          <div className="hs-mtable-head min-w-max" style={{ gridTemplateColumns: colTplVisible }}>
-            {visibleColKeys.map((key, idx) => (
-              <span
-                key={key}
-                className="relative flex min-w-0 items-center px-2 py-1"
-                style={{ textAlign: idx === 0 ? "center" : "left" }}
-              >
-                {headerLabel(mode, key, customColumns)}
-                {idx < visibleColKeys.length - 1 ? (
-                  <span
-                    role="separator"
-                    aria-orientation="vertical"
-                    className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize select-none hover:bg-[var(--accent)]/25"
-                    onMouseDown={(e) => onResizeMouseDown(e, key)}
-                  />
-                ) : null}
-              </span>
-            ))}
+          <div className="hs-mtable-head min-w-max" style={{ gridTemplateColumns: `${colTplVisible} 100px` }}>
+            {visibleColKeys.map((key, idx) => {
+              const isCustom = key.startsWith("custom:");
+              const colId = isCustom ? key.slice("custom:".length) : key;
+              const menuOpen = colMenuOpen === key;
+              return (
+                <span
+                  key={key}
+                  className="group relative flex min-w-0 items-center px-2 py-1"
+                  style={{ textAlign: idx === 0 ? "center" : "left" }}
+                >
+                  <span className="truncate">{headerLabel(mode, key, customColumns)}</span>
+                  {idx > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => setColMenuOpen(menuOpen ? null : key)}
+                      className="ml-auto flex h-5 w-5 shrink-0 items-center justify-center rounded opacity-0 transition hover:bg-[var(--hover)] group-hover:opacity-100"
+                      aria-label="Spaltenmenü"
+                    >
+                      <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                        <circle cx="5" cy="12" r="1.5" fill="currentColor" />
+                        <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+                        <circle cx="19" cy="12" r="1.5" fill="currentColor" />
+                      </svg>
+                    </button>
+                  ) : null}
+                  {menuOpen ? (
+                    <div
+                      className="absolute left-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-[var(--border)] bg-[var(--card)] py-1 shadow-pop"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="border-b border-[var(--border)] px-3 py-2 text-[10px] font-semibold text-[var(--muted)]">
+                        Spalten-ID: {colId}
+                      </div>
+                      <button
+                        type="button"
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] hover:bg-[var(--hover)]"
+                        onClick={() => {
+                          setGroupBy(key === COL.topic ? "topic" : key === COL.status ? "status" : "none");
+                          setColMenuOpen(null);
+                        }}
+                      >
+                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                          <path d="M4 6h16M4 12h10M4 18h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                        </svg>
+                        Gruppieren nach
+                      </button>
+                      {isCustom ? (
+                        <>
+                          <div className="my-1 border-t border-[var(--border)]" />
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] hover:bg-[var(--hover)]"
+                            onClick={() => {
+                              const newName = window.prompt("Neuer Spaltenname:", headerLabel(mode, key, customColumns));
+                              if (newName && newName.trim()) {
+                                // TODO: Server Action für Umbenennung
+                              }
+                              setColMenuOpen(null);
+                            }}
+                          >
+                            <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                              <path d="M15.232 5.232l3.536 3.536M4 20h4l10-10a2.5 2.5 0 00-3.536-3.536L4 16.464V20z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                            Umbenennen
+                          </button>
+                          <button
+                            type="button"
+                            className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] text-[var(--danger)] hover:bg-[var(--hover)]"
+                            onClick={() => {
+                              if (window.confirm("Diese Spalte wirklich löschen?")) {
+                                // TODO: Server Action für Löschen
+                              }
+                              setColMenuOpen(null);
+                            }}
+                          >
+                            <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                              <path d="M6 7v12a2 2 0 002 2h8a2 2 0 002-2V7M4 7h16M10 11v6M14 11v6M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                            Löschen
+                          </button>
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+                  {idx < visibleColKeys.length - 1 ? (
+                    <span
+                      role="separator"
+                      aria-orientation="vertical"
+                      className="absolute right-0 top-0 z-10 h-full w-1.5 cursor-col-resize select-none hover:bg-[var(--accent)]/25"
+                      onMouseDown={(e) => onResizeMouseDown(e, key)}
+                    />
+                  ) : null}
+                </span>
+              );
+            })}
+            <button
+              type="button"
+              onClick={() => setAddColOpen(true)}
+              className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-[var(--muted)] transition hover:text-[var(--ink)]"
+            >
+              <svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              Spalte
+            </button>
           </div>
 
           {groups.map((g) => {
@@ -894,7 +988,7 @@ export function MainTableView({
                       <div
                         key={r.id}
                         className={`hs-mrow min-w-max ${sub ? "hs-msub" : ""}`}
-                        style={{ gridTemplateColumns: colTplVisible }}
+                        style={{ gridTemplateColumns: `${colTplVisible} 100px` }}
                       >
                         {!hiddenSet.has(COL.grab) ? (
                           <div className="hs-mcell hs-mcell-grab hs-mcell-center text-[var(--muted)]">
@@ -1134,9 +1228,21 @@ export function MainTableView({
                             </button>
                           </div>
                         ) : null}
+                        <div className="hs-mcell" />
                       </div>
                     );
                   })}
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void addTaskToGroup(g.key)}
+                  className="hs-add-task-row flex w-full items-center gap-2 border-b border-transparent px-3 py-2.5 text-[13px] text-[var(--muted)] transition hover:bg-[var(--card)] hover:text-[var(--ink)] disabled:opacity-50"
+                >
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none" className="shrink-0 opacity-60">
+                    <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
+                  </svg>
+                  {mode === "okr" ? "Objective hinzufügen…" : "Aufgabe hinzufügen…"}
+                </button>
               </div>
             );
           })}

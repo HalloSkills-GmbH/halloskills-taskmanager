@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
+import { useSetPageTitle } from "@/components/layout/PageTitleContext";
 
 const tabs = [
   {
@@ -31,12 +32,14 @@ export function TasksShell({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const qs = searchParams.toString();
 
+  useSetPageTitle("Aufgaben");
+
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--bg)]">
-      <header className="border-b border-[var(--border)] px-[var(--pad-x)] pb-0 pt-6">
-        <div className="mx-auto max-w-[1680px]">
+      <header className="border-b border-[var(--border)] px-[var(--pad-x)] py-3">
+        <div className="mx-auto flex max-w-[1680px] items-center gap-4">
           <nav
-            className="hs-tabs inline-flex w-full max-w-4xl flex-wrap gap-y-1"
+            className="hs-tabs inline-flex flex-wrap gap-y-1"
             aria-label="Aufgaben-Ansichten"
           >
             {tabs.map((t) => {

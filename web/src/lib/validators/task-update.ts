@@ -25,7 +25,7 @@ export const taskUpdateSchema = z
 export type TaskUpdateInput = z.infer<typeof taskUpdateSchema>;
 
 export const taskInsertSchema = z.object({
-  id: z.coerce.number().int().positive(),
+  id: z.coerce.number().int().positive().optional(),
   name: z.string().min(1).max(500),
   item_kind: z.enum(["task", "objective", "key_result"]),
   start_date: z.string().max(32).nullable().optional(),

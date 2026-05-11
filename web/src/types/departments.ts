@@ -29,5 +29,7 @@ export type DepartmentBoardRow = {
   name: string;
   sort_order: number;
   column_config: DepartmentBoardColumn[] | null;
+  is_group: boolean;
+  parent_id: string | null;
   created_at: string;
 };

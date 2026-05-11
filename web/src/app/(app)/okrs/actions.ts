@@ -51,8 +51,23 @@ export async function insertTaskRow(
   if (!parsed.success) {
     return { ok: false, message: parsed.error.issues.map((i) => i.message).join(", ") };
   }
+
+  const supabase = await createClient();
+
+  let taskId = parsed.data.id;
+  if (!taskId) {
+    const { data: maxRow } = await supabase
+      .from("tasks")
+      .select("id")
+      .order("id", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    taskId = (maxRow?.id ?? 0) + 1;
+  }
+
   const row = {
     ...parsed.data,
+    id: taskId,
     dependencies: parsed.data.dependencies ?? [],
     attachments: parsed.data.attachments ?? [],
     progress: parsed.data.progress ?? 0,
@@ -60,7 +75,6 @@ export async function insertTaskRow(
     custom_fields: parsed.data.custom_fields ?? {},
   };
 
-  const supabase = await createClient();
   const { error } = await supabase.from("tasks").insert(row);
   if (error) {
     return { ok: false, message: error.message };

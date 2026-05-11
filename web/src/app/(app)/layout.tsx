@@ -27,15 +27,26 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
     const { data: boardRows, error: boardErr } = await supabase
       .from("department_boards")
-      .select("id,name,department_id")
+      .select("id,name,department_id,is_group,parent_id")
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
     if (!boardErr && boardRows) {
       const byDept: Record<string, DeptBoardNavItem[]> = {};
-      for (const row of boardRows as { id: string; name: string; department_id: string }[]) {
+      for (const row of boardRows as {
+        id: string;
+        name: string;
+        department_id: string;
+        is_group?: boolean;
+        parent_id?: string | null;
+      }[]) {
         const did = row.department_id;
         if (!byDept[did]) byDept[did] = [];
-        byDept[did].push({ id: row.id, name: row.name });
+        byDept[did].push({
+          id: row.id,
+          name: row.name,
+          isGroup: row.is_group ?? false,
+          parentId: row.parent_id ?? null,
+        });
       }
       departmentBoardsByDeptId = byDept;
     }

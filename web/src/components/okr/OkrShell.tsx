@@ -6,6 +6,7 @@ import { useCallback, useEffect, useMemo, useState, useTransition } from "react"
 import type { OkrFilters } from "@/lib/okr/filters";
 import { okrFilterSchema, parseOkrFilters, serializeOkrFilters } from "@/lib/okr/filters";
 import { IconFunnel } from "@/components/tasks/TasksMonoToolbar";
+import { useSetPageTitle } from "@/components/layout/PageTitleContext";
 
 const DEFAULT_OKR_BASE = "/okrs";
 
@@ -49,6 +50,8 @@ export function OkrShell({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const qsKey = searchParams.toString();
 
+  useSetPageTitle(contextLabel ? `OKRs · ${contextLabel}` : "OKRs");
+
   const tabs = useMemo(
     () =>
       [
@@ -88,25 +91,10 @@ export function OkrShell({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-[var(--bg)]">
-      <header className="border-b border-[var(--border)] px-[var(--pad-x)] pb-5 pt-8">
-        <div className="mx-auto max-w-[1680px]">
-          <div className="hs-page-title mb-6">
-            <h1>
-              Strategische <em>OKRs</em>
-              {contextLabel ? (
-                <span className="text-[0.65em] font-sans not-italic text-[var(--muted)]">
-                  {" "}
-                  · {contextLabel}
-                </span>
-              ) : null}
-            </h1>
-            <p className="sub">
-              Tabelle, Kanban, Zeitleiste und Kalender — Filter in der URL, eingeklappt bis du sie
-              brauchst.
-            </p>
-          </div>
+      <header className="border-b border-[var(--border)] px-[var(--pad-x)] py-3">
+        <div className="mx-auto flex max-w-[1680px] items-center gap-4">
           <nav
-            className="hs-tabs inline-flex w-full max-w-4xl flex-wrap gap-y-1"
+            className="hs-tabs inline-flex flex-wrap gap-y-1"
             aria-label="OKR-Ansichten"
           >
             {tabs.map((t) => {
@@ -120,133 +108,138 @@ export function OkrShell({
               );
             })}
           </nav>
-        </div>
-      </header>
-
-      <section className="border-b border-[var(--border)] px-[var(--pad-x)] py-4">
-        <div className="mx-auto max-w-[1680px]">
-          <button
-            type="button"
-            onClick={() => setFiltersOpen((o) => !o)}
-            className="flex w-full items-center justify-between rounded-hs border border-[var(--border)] bg-[var(--card)] px-4 py-3 text-left shadow-card transition hover:border-[var(--border-2)]"
-            aria-expanded={filtersOpen}
-          >
-            <span className="flex items-center gap-2 text-[13px] font-bold text-[var(--ink)]">
-              <IconFunnel className="shrink-0 text-[var(--ink-2)]" />
-              Filter
-              {activeFilters ? (
-                <span className="rounded-full bg-[var(--accent-soft)] px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-[var(--accent-ink)]">
-                  Aktiv
-                </span>
-              ) : null}
-            </span>
-            <span className="text-[12px] font-semibold text-[var(--muted)]">
-              {filtersOpen ? "Einklappen" : "Aufklappen"}
-            </span>
-          </button>
-          <div
-            className={`grid transition-[grid-template-rows] duration-200 ease-out ${
-              filtersOpen ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
-            }`}
-          >
-            <div className="min-h-0 overflow-hidden">
-              <div className="mt-3 rounded-hs border border-[var(--border)] bg-[var(--card)] p-5 shadow-card">
-                <div className="flex flex-wrap items-end gap-4">
-                  <label className="hs-field min-w-[12rem]">
-                    <span className="hs-field-label">Suche</span>
-                    <input
-                      value={draft.q}
-                      onChange={(e) => setDraft((d) => ({ ...d, q: e.target.value }))}
-                      placeholder="Titel, Notizen, Team…"
-                      className="hs-input w-full"
-                    />
-                  </label>
-                  <label className="hs-field min-w-[11rem]">
-                    <span className="hs-field-label">Typ</span>
-                    <select
-                      value={draft.type}
-                      onChange={(e) =>
-                        setDraft((d) => ({
-                          ...d,
-                          type: e.target.value as OkrFilters["type"],
-                        }))
-                      }
-                      className="hs-select w-full"
+          <div className="ml-auto flex items-center gap-2">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setFiltersOpen((o) => !o)}
+                className={`hs-btn flex items-center gap-2 ${activeFilters ? "!border-[var(--accent)] !bg-[var(--accent-soft)]" : "hs-btn-ghost"}`}
+                aria-expanded={filtersOpen}
+              >
+                <IconFunnel className="shrink-0" />
+                <span className="hidden sm:inline">Filter</span>
+                {activeFilters ? (
+                  <span className="flex h-[18px] w-[18px] items-center justify-center rounded-full bg-[var(--accent)] text-[10px] font-bold text-white">
+                    1
+                  </span>
+                ) : null}
+              </button>
+              {filtersOpen ? (
+                <div className="absolute right-0 top-full z-50 mt-2 w-[480px] rounded-hs border border-[var(--border)] bg-[var(--card)] p-4 shadow-pop">
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className="text-[13px] font-bold text-[var(--ink)]">Filter</span>
+                    <button
+                      type="button"
+                      onClick={() => setFiltersOpen(false)}
+                      className="text-[var(--muted)] hover:text-[var(--ink)]"
                     >
-                      <option value="all">Alle OKR-Zeilen + verknüpfte Tasks</option>
-                      <option value="objective">Nur Objectives</option>
-                      <option value="key_result">Nur Key Results</option>
-                      <option value="task">Nur verknüpfte Aufgaben</option>
-                    </select>
-                  </label>
-                  <label className="hs-field">
-                    <span className="hs-field-label">Von</span>
-                    <input
-                      type="date"
-                      value={draft.from || ""}
-                      onChange={(e) =>
-                        setDraft((d) => ({ ...d, from: e.target.value || null }))
-                      }
-                      className="hs-input"
-                    />
-                  </label>
-                  <label className="hs-field">
-                    <span className="hs-field-label">Bis</span>
-                    <input
-                      type="date"
-                      value={draft.to || ""}
-                      onChange={(e) =>
-                        setDraft((d) => ({ ...d, to: e.target.value || null }))
-                      }
-                      className="hs-input"
-                    />
-                  </label>
-                  <label className="hs-field w-28">
-                    <span className="hs-field-label">Team</span>
-                    <input
-                      value={draft.team || ""}
-                      onChange={(e) =>
-                        setDraft((d) => ({ ...d, team: e.target.value || null }))
-                      }
-                      placeholder="z. B. AHE"
-                      className="hs-input w-full"
-                    />
-                  </label>
-                  <label className="hs-field w-40">
-                    <span className="hs-field-label">Status</span>
-                    <input
-                      value={draft.status || ""}
-                      onChange={(e) =>
-                        setDraft((d) => ({ ...d, status: e.target.value || null }))
-                      }
-                      placeholder="z. B. In Progress"
-                      className="hs-input w-full"
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    onClick={applyFilters}
-                    disabled={pending}
-                    className="hs-btn hs-btn-primary disabled:pointer-events-none disabled:opacity-50"
-                  >
-                    {pending ? "Wird angewendet…" : "Filter anwenden"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={resetFilters}
-                    disabled={pending}
-                    className="hs-btn hs-btn-ghost disabled:pointer-events-none disabled:opacity-50"
-                  >
-                    Zurücksetzen
-                  </button>
+                      <svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+                        <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      </svg>
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <label className="hs-field">
+                      <span className="hs-field-label">Suche</span>
+                      <input
+                        value={draft.q}
+                        onChange={(e) => setDraft((d) => ({ ...d, q: e.target.value }))}
+                        placeholder="Titel, Notizen…"
+                        className="hs-input w-full"
+                      />
+                    </label>
+                    <label className="hs-field">
+                      <span className="hs-field-label">Typ</span>
+                      <select
+                        value={draft.type}
+                        onChange={(e) =>
+                          setDraft((d) => ({
+                            ...d,
+                            type: e.target.value as OkrFilters["type"],
+                          }))
+                        }
+                        className="hs-select w-full"
+                      >
+                        <option value="all">Alle</option>
+                        <option value="objective">Objectives</option>
+                        <option value="key_result">Key Results</option>
+                        <option value="task">Aufgaben</option>
+                      </select>
+                    </label>
+                    <label className="hs-field">
+                      <span className="hs-field-label">Von</span>
+                      <input
+                        type="date"
+                        value={draft.from || ""}
+                        onChange={(e) =>
+                          setDraft((d) => ({ ...d, from: e.target.value || null }))
+                        }
+                        className="hs-input w-full"
+                      />
+                    </label>
+                    <label className="hs-field">
+                      <span className="hs-field-label">Bis</span>
+                      <input
+                        type="date"
+                        value={draft.to || ""}
+                        onChange={(e) =>
+                          setDraft((d) => ({ ...d, to: e.target.value || null }))
+                        }
+                        className="hs-input w-full"
+                      />
+                    </label>
+                    <label className="hs-field">
+                      <span className="hs-field-label">Team</span>
+                      <input
+                        value={draft.team || ""}
+                        onChange={(e) =>
+                          setDraft((d) => ({ ...d, team: e.target.value || null }))
+                        }
+                        placeholder="z. B. AHE"
+                        className="hs-input w-full"
+                      />
+                    </label>
+                    <label className="hs-field">
+                      <span className="hs-field-label">Status</span>
+                      <input
+                        value={draft.status || ""}
+                        onChange={(e) =>
+                          setDraft((d) => ({ ...d, status: e.target.value || null }))
+                        }
+                        placeholder="z. B. In Progress"
+                        className="hs-input w-full"
+                      />
+                    </label>
+                  </div>
+                  <div className="mt-4 flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      onClick={resetFilters}
+                      disabled={pending}
+                      className="hs-btn hs-btn-ghost text-[12px] disabled:opacity-50"
+                    >
+                      Zurücksetzen
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        applyFilters();
+                        setFiltersOpen(false);
+                      }}
+                      disabled={pending}
+                      className="hs-btn hs-btn-primary text-[12px] disabled:opacity-50"
+                    >
+                      {pending ? "…" : "Anwenden"}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : null}
             </div>
           </div>
         </div>
-      </section>
+      </header>
 
-      <div className="min-h-0 flex-1 overflow-auto px-[var(--pad-x)] py-6">
+      <div className="min-h-0 flex-1 overflow-auto px-[var(--pad-x)] py-4">
         <div className="mx-auto max-w-[1680px]">{children}</div>
       </div>
     </div>

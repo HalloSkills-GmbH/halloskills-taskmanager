@@ -75,31 +75,38 @@ export async function createDepartment(
 
 export async function createDepartmentBoard(
   input: unknown,
-): Promise<{ ok: true; id: string } | { ok: false; message: string }> {
+): Promise<{ ok: true; id: string; isGroup: boolean } | { ok: false; message: string }> {
   const parsed = z
     .object({
       departmentId: z.string().uuid(),
       name: z.string().min(1).max(120),
+      isGroup: z.boolean().optional().default(false),
+      parentId: z.string().uuid().nullable().optional(),
     })
     .safeParse(input);
   if (!parsed.success) {
     return { ok: false, message: parsed.error.issues.map((i) => i.message).join(", ") };
   }
   const supabase = await createClient();
+  const insertData: Record<string, unknown> = {
+    department_id: parsed.data.departmentId,
+    name: parsed.data.name.trim(),
+    sort_order: 0,
+    is_group: parsed.data.isGroup,
+  };
+  if (parsed.data.parentId) {
+    insertData.parent_id = parsed.data.parentId;
+  }
   const { data, error } = await supabase
     .from("department_boards")
-    .insert({
-      department_id: parsed.data.departmentId,
-      name: parsed.data.name.trim(),
-      sort_order: 0,
-    })
+    .insert(insertData)
     .select("id")
     .single();
   if (error || !data?.id) {
     return { ok: false, message: error?.message || "Insert fehlgeschlagen" };
   }
   revalidateWorkspace();
-  return { ok: true, id: data.id as string };
+  return { ok: true, id: data.id as string, isGroup: parsed.data.isGroup };
 }
 
 export async function updateDepartmentBoardColumns(

@@ -55,7 +55,6 @@ export default async function DepartmentTasksPage({
           initialMergedWidths={merged}
           layoutSyncKey={layoutSyncKey}
           departmentId={dept.id}
-          pageTitle={`Aufgaben · ${dept.name}`}
           tasksPathPrefix={`/d/${dept.slug}/tasks`}
         />
       </Suspense>

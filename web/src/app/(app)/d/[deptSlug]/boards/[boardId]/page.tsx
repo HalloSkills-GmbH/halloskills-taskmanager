@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { BoardProjectsAndKanban } from "@/components/workspace/BoardProjectsAndKanban";
-import { DepartmentBoardColumnsEditor } from "@/components/workspace/DepartmentBoardColumnsEditor";
 import { parseBoardColumnConfig } from "@/lib/department-board";
 import { fetchBoardProjects, fetchDepartmentBoardForDept, fetchDepartmentBySlug } from "@/lib/supabase/department-queries";
 import { createClient } from "@/lib/supabase/server";
@@ -56,11 +55,7 @@ export default async function DepartmentBoardDetailPage({
         </p>
       ) : null}
 
-      <div className="mt-8 max-w-xl">
-        <DepartmentBoardColumnsEditor boardId={board.id} initialColumns={columns} />
-      </div>
-
-      <div className="mt-10">
+      <div className="mt-8">
         <BoardProjectsAndKanban
           boardId={board.id}
           departmentId={dept.id}

@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback, useMemo, useState } from "react";
 import { insertTaskRow } from "@/app/(app)/okrs/actions";
 import type { MainTableGroupBy, MainTableTaskSort } from "@/components/tasks/MainTableView";
@@ -30,26 +29,7 @@ function IconFunnel({ className }: { className?: string }) {
   );
 }
 
-function buildViewTabs(base: string) {
-  return [
-    { href: base, label: "Tabelle", match: (p: string) => p === base },
-    { href: `${base}/kanban`, label: "Kanban", match: (p: string) => p.startsWith(`${base}/kanban`) },
-    {
-      href: `${base}/gantt`,
-      label: "Zeitleiste",
-      match: (p: string) => p.startsWith(`${base}/gantt`),
-    },
-    {
-      href: `${base}/calendar`,
-      label: "Kalender",
-      match: (p: string) => p.startsWith(`${base}/calendar`),
-    },
-  ] as const;
-}
-
 export function TasksMonoToolbar({
-  tasksPathPrefix,
-  initialTasksForNextId,
   departmentId,
   draft,
   setDraft,
@@ -66,8 +46,6 @@ export function TasksMonoToolbar({
   onHiddenColumnKeysChange,
   initialCustomColumns,
 }: {
-  tasksPathPrefix: string;
-  initialTasksForNextId: { id: number }[];
   departmentId?: string | null;
   draft: TaskListFilters;
   setDraft: React.Dispatch<React.SetStateAction<TaskListFilters>>;
@@ -84,22 +62,9 @@ export function TasksMonoToolbar({
   onHiddenColumnKeysChange: (keys: string[]) => void;
   initialCustomColumns: TaskCustomColumnRow[];
 }) {
-  const pathname = usePathname() || "";
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const qs = searchParams.toString();
   const [creating, setCreating] = useState(false);
   const [hideOpen, setHideOpen] = useState(false);
-
-  const nextId = useMemo(
-    () =>
-      initialTasksForNextId.length
-        ? Math.max(...initialTasksForNextId.map((t) => t.id)) + 1
-        : 1,
-    [initialTasksForNextId],
-  );
-
-  const viewTabs = useMemo(() => buildViewTabs(tasksPathPrefix), [tasksPathPrefix]);
 
   const hideableBuiltins = useMemo(
     () => [
@@ -144,7 +109,6 @@ export function TasksMonoToolbar({
     setCreating(true);
     try {
       const res = await insertTaskRow({
-        id: nextId,
         name: "Neue Aufgabe",
         item_kind: "task",
         department_id: departmentId ?? null,
@@ -164,35 +128,10 @@ export function TasksMonoToolbar({
     } finally {
       setCreating(false);
     }
-  }, [nextId, departmentId, router]);
+  }, [departmentId, router]);
 
   return (
     <div className="mb-4 flex min-w-0 flex-col gap-3 rounded-hs border border-[var(--border)] bg-[var(--card)] px-3 py-2.5 shadow-card sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
-      <div className="flex min-w-0 flex-wrap items-center gap-1">
-        <span className="mr-1 text-[11px] font-extrabold uppercase tracking-wide text-[var(--muted)]">
-          Ansicht
-        </span>
-        {viewTabs.map((t) => {
-          const active = t.match(pathname);
-          const href = qs ? `${t.href}?${qs}` : t.href;
-          return (
-            <Link
-              key={t.href}
-              href={href}
-              className={`rounded-lg px-2.5 py-1.5 text-[12px] font-semibold transition ${
-                active
-                  ? "bg-[var(--accent-soft)] text-[var(--accent-ink)]"
-                  : "text-[var(--ink-2)] hover:bg-[var(--hover)]"
-              }`}
-            >
-              {t.label}
-            </Link>
-          );
-        })}
-      </div>
-
-      <div className="mx-1 hidden h-6 w-px bg-[var(--border)] sm:block" aria-hidden />
-
       <button
         type="button"
         disabled={creating}

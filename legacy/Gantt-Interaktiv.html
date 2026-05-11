@@ -65,8 +65,8 @@
   .login-title{font-size:26px; font-weight:700; color:#1F2A3C; margin:0 0 8px; letter-spacing:-0.01em}
   .login-sub{font-size:14px; color:#5C6678; margin:0 0 24px; line-height:1.55}
   .login-card form{display:flex; flex-direction:column; gap:10px}
-  .login-card input[type=email]{padding:13px 16px; border:1.5px solid #E5E9F0; border-radius:12px; font-size:14px; font-family:inherit; outline:none; color:#1F2A3C; transition:border-color .15s, box-shadow .15s}
-  .login-card input[type=email]:focus{border-color:#5BB0E6; box-shadow:0 0 0 3px rgba(91,176,230,0.15)}
+  .login-card input[type=email], .login-card input[type=password]{padding:13px 16px; border:1.5px solid #E5E9F0; border-radius:12px; font-size:14px; font-family:inherit; outline:none; color:#1F2A3C; transition:border-color .15s, box-shadow .15s}
+  .login-card input[type=email]:focus, .login-card input[type=password]:focus{border-color:#5BB0E6; box-shadow:0 0 0 3px rgba(91,176,230,0.15)}
   .login-card button{padding:13px 16px; border:none; border-radius:12px; background:#1F2A3C; color:#fff; font-size:14px; font-weight:600; font-family:inherit; cursor:pointer; transition:background .15s, transform .05s}
   .login-card button:hover:not(:disabled){background:#2C3A52}
   .login-card button:active:not(:disabled){transform:scale(0.99)}
@@ -479,6 +479,46 @@
   /* ===== CALENDAR pane ===== */
   .calendar-pane{display:none; background:var(--white); flex-direction:column; height:100%; overflow:hidden}
   .calendar-pane.active{display:flex}
+
+  /* OKR full view */
+  .okr-pane{display:none; background:var(--bg); overflow-y:auto; height:100%; padding:0}
+  .okr-pane.active{display:block}
+  .okr-inner{max-width:1100px; margin:0 auto; padding:28px 36px 80px}
+  .okr-head{display:flex; align-items:flex-start; justify-content:space-between; gap:20px; margin-bottom:22px}
+  .okr-head h2{font-family:var(--font-head); font-size:1.65rem; font-weight:700; color:var(--ink); margin:0 0 6px; letter-spacing:-0.02em}
+  .okr-head p{margin:0; font-size:13.5px; color:var(--text); line-height:1.55; max-width:520px}
+  .okr-actions{display:flex; flex-wrap:wrap; gap:10px; flex-shrink:0}
+  .okr-btn{display:inline-flex; align-items:center; gap:8px; padding:10px 16px; border-radius:12px; border:1px solid var(--border-strong); background:var(--card); font-family:var(--font-body); font-size:12.5px; font-weight:600; color:var(--ink-2); cursor:pointer; transition:background .15s, border-color .15s}
+  .okr-btn:hover{background:var(--hover); border-color:var(--mute)}
+  .okr-btn.primary{background:var(--blue); color:#fff; border-color:var(--blue); box-shadow:0 4px 14px rgba(31,95,168,.2)}
+  .okr-btn.primary:hover{background:var(--blue-2); border-color:var(--blue-2)}
+  .okr-empty{text-align:center; padding:56px 24px; color:var(--mute); font-size:14px; background:var(--card); border-radius:18px; border:1px dashed var(--border-strong)}
+  .okr-card{background:var(--card); border-radius:18px; border:1px solid var(--border); box-shadow:0 1px 2px rgba(15,30,55,.04), 0 8px 28px rgba(15,30,55,.05); margin-bottom:20px; overflow:hidden}
+  .okr-card-h{display:flex; align-items:flex-start; justify-content:space-between; gap:14px; padding:20px 22px 16px; border-bottom:1px solid var(--border); background:linear-gradient(180deg, var(--blue-soft) 0%, transparent 100%)}
+  .okr-card-h h3{margin:0; font-size:1.15rem; font-weight:700; color:var(--ink); font-family:var(--font-head); letter-spacing:-0.01em; flex:1; min-width:0}
+  .okr-card-meta{font-size:11.5px; color:var(--text-2); margin-top:6px}
+  .okr-card-bar{height:8px; background:var(--hover); border-radius:999px; overflow:hidden; margin-top:12px; max-width:280px}
+  .okr-card-bar > i{display:block; height:100%; border-radius:999px; background:linear-gradient(90deg,var(--blue) 0%,#4B82C9 100%); transition:width .35s}
+  .okr-card-tools{display:flex; flex-wrap:wrap; gap:8px}
+  .okr-icon-btn{width:36px; height:36px; border-radius:10px; border:1px solid var(--border); background:var(--card); cursor:pointer; display:flex; align-items:center; justify-content:center; color:var(--text)}
+  .okr-icon-btn:hover{background:var(--hover); color:var(--ink-2)}
+  .okr-kr{padding:16px 22px 18px; border-bottom:1px solid var(--border)}
+  .okr-kr:last-child{border-bottom:none}
+  .okr-kr-top{display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:10px}
+  .okr-kr-title{font-weight:600; font-size:13.5px; color:var(--ink-2); flex:1}
+  .okr-kr-notes{font-size:12px; color:var(--text); line-height:1.45; margin:0 0 10px; max-height:3.2em; overflow:hidden}
+  .okr-mini-bar{height:6px; background:var(--hover); border-radius:999px; overflow:hidden; margin:8px 0 10px}
+  .okr-mini-bar > i{display:block; height:100%; border-radius:999px; background:var(--mint)}
+  .okr-task-row{display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:8px}
+  .okr-chip{display:inline-flex; align-items:center; gap:6px; padding:6px 11px; border-radius:999px; font-size:11.5px; font-weight:600; background:var(--hover); color:var(--ink-2); border:1px solid var(--border); cursor:pointer; max-width:100%}
+  .okr-chip:hover{background:var(--blue-soft); border-color:var(--blue-mid); color:var(--blue)}
+  .okr-chip small{font-weight:500; color:var(--mute)}
+  .okr-chip-wrap{display:inline-flex; align-items:center; gap:2px; vertical-align:middle}
+  .okr-unlink{width:22px; height:22px; border:none; border-radius:8px; background:transparent; color:var(--mute); cursor:pointer; font-size:14px; line-height:1; flex-shrink:0}
+  .okr-unlink:hover{background:var(--rose); color:var(--danger)}
+  .okr-link-row{display:flex; flex-wrap:wrap; align-items:center; gap:10px; margin-top:10px; font-size:12px; color:var(--text-2)}
+  .okr-link-row select{flex:1; min-width:180px; max-width:320px; padding:8px 11px; border-radius:10px; border:1px solid var(--border); font-family:var(--font-body); font-size:12px; background:var(--card)}
+  .okr-danger{color:var(--danger); border-color:rgba(166,50,47,.25)}
   .cal-toolbar{display:flex; align-items:center; gap:10px; padding:14px 24px; border-bottom:0.5px solid var(--border); background:var(--white)}
   .cal-nav{display:inline-flex; align-items:center; gap:6px}
   .cal-nav button{width:32px; height:32px; border:1px solid var(--border); background:var(--white); cursor:pointer; font-size:14px; color:var(--dark); display:inline-flex; align-items:center; justify-content:center; transition:background .12s}
@@ -515,13 +555,14 @@
     <div class="login-card">
       <div class="login-logo">HalloSkills</div>
       <h1 class="login-title">Taskmanager</h1>
-      <p class="login-sub">Gib deine HalloSkills-Mail ein. Du bekommst einen Login-Link per Mail — einmal klicken, dann bist du drin.</p>
+      <p class="login-sub">Melde dich mit deiner HalloSkills-Mail und dem Passwort an. Zugänge werden von der Administration angelegt — es gibt keine Selbstregistrierung.</p>
       <form id="loginForm" autocomplete="on">
         <input type="email" id="loginEmail" placeholder="vorname.nachname@halloskills.de" required autocomplete="email">
-        <button type="submit" id="loginSubmit">Login-Link per Mail anfordern</button>
+        <input type="password" id="loginPassword" placeholder="Passwort" required autocomplete="current-password">
+        <button type="submit" id="loginSubmit">Anmelden</button>
       </form>
       <div class="login-msg" id="loginMsg"></div>
-      <div class="login-foot">Nur eingeladene Mail-Adressen können sich einloggen.</div>
+      <div class="login-foot">Bei Problemen mit dem Zugang bitte die Administration kontaktieren.</div>
     </div>
   </div>
 
@@ -532,6 +573,9 @@
     <div class="nav-logo" title="HalloSkills">H</div>
     <button class="nav-item" data-mode="board" title="Board" aria-label="Board">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><rect x="3" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="3" width="7.5" height="7.5" rx="1.6"/><rect x="3" y="13.5" width="7.5" height="7.5" rx="1.6"/><rect x="13.5" y="13.5" width="7.5" height="7.5" rx="1.6"/></svg>
+    </button>
+    <button class="nav-item" data-mode="okr" title="OKRs" aria-label="OKRs">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>
     </button>
     <button class="nav-item" data-mode="gantt" title="Gantt" aria-label="Gantt">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><line x1="4" y1="6.5" x2="13" y2="6.5"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="6" y1="17.5" x2="15" y2="17.5"/></svg>
@@ -679,6 +723,10 @@
             <input type="number" id="fProgress" min="0" max="100" step="5">
           </div>
         </div>
+        <div class="field" id="fOkrKrWrap">
+          <label>Key Result (OKR)</label>
+          <select id="fOkrKr"></select>
+        </div>
         <div class="field">
           <label>Blockiert durch (Vorgänger)</label>
           <div class="deps-picker" id="fDeps"></div>
@@ -726,6 +774,10 @@
     </div>
     <div class="cal-grid" id="calGrid"></div>
   </section>
+
+  <section class="okr-pane" id="okrPane">
+    <div class="okr-inner" id="okrRoot"></div>
+  </section>
 </main>
 
   </div><!-- /.app-main -->
@@ -742,6 +794,14 @@
 const INITIAL_DATA = [{"id": 1, "name": "Versenden IHK-Konzepte", "topic": "Compliance", "assigned": "KSC", "start": "2026-04-09", "end": "2026-04-16", "progress": 100, "status": "Complete", "dependencies": [8]}, {"id": 2, "name": "Business Plan", "topic": "Admin", "assigned": "AHE", "start": "2026-04-16", "end": "2026-05-16", "progress": 0, "status": "Planned", "dependencies": []}, {"id": 3, "name": "Basic Versicherungen", "topic": "Admin", "assigned": "AHE", "start": "2026-04-16", "end": "2026-05-16", "progress": 0, "status": "Not started", "dependencies": []}, {"id": 4, "name": "Aufbau Buchhaltung", "topic": "Admin", "assigned": "CKE", "start": "2026-04-16", "end": "2026-05-16", "progress": 0, "status": "Not started", "dependencies": []}, {"id": 5, "name": "Steuerberater beauftragen", "topic": "Admin", "assigned": "AHE", "start": "2026-04-16", "end": "2026-05-16", "progress": 0, "status": "Not started", "dependencies": []}, {"id": 6, "name": "DSGVO, AGB, Widerrufsrechte", "topic": "Compliance", "assigned": "NEG", "start": "2026-04-16", "end": "2026-04-30", "progress": 20, "status": "In Progress", "dependencies": []}, {"id": 7, "name": "IHK-Maßnahmenbestätigung", "topic": "Compliance", "assigned": "KSC", "start": "2026-04-16", "end": "2026-09-30", "progress": 10, "status": "In Progress", "dependencies": [1, 6]}, {"id": 8, "name": "Festlegen der Umschulung", "topic": "Ops", "assigned": "AHE", "start": "2026-04-16", "end": "2026-04-23", "progress": 10, "status": "In Progress", "dependencies": []}, {"id": 9, "name": "Aufbau einer Website (Landingpage)", "topic": "Marketing", "assigned": "NEG", "start": "2026-04-16", "end": "2026-04-23", "progress": 80, "status": "In Progress", "dependencies": []}, {"id": 10, "name": "Marketing-Strategie", "topic": "Marketing", "assigned": "NEG", "start": "2026-04-16", "end": "2026-04-23", "progress": 0, "status": "Planned", "dependencies": []}, {"id": 11, "name": "AZAV-Trägerzertifizierung", "topic": "Compliance", "assigned": "KSC", "start": "2026-04-23", "end": "2026-07-02", "progress": 0, "status": "Planned", "dependencies": [16, 20]}, {"id": 12, "name": "Aufbau Social Media-Kanäle", "topic": "Marketing", "assigned": "NEG", "start": "2026-05-01", "end": "2026-05-29", "progress": 0, "status": "Not started", "dependencies": [25]}, {"id": 13, "name": "Strategisches Leitbild", "topic": "Marketing", "assigned": "AHE", "start": "2026-05-01", "end": "2026-05-29", "progress": 0, "status": "Not started", "dependencies": []}, {"id": 14, "name": "Rahmenlehrplan", "topic": "Ops", "assigned": "KSC", "start": "2026-05-01", "end": "2026-05-29", "progress": 0, "status": "Not started", "dependencies": []}, {"id": 15, "name": "Erarbeitung Mitarbeiterstruktur", "topic": "HR", "assigned": "AHE", "start": "2026-05-01", "end": "2026-05-29", "progress": 0, "status": "Not started", "dependencies": []}, {"id": 16, "name": "Aufbau von QM-Prozessen", "topic": "Compliance", "assigned": "KSC", "start": "2026-05-02", "end": "2026-06-16", "progress": 0, "status": "Not started", "dependencies": []}, {"id": 17, "name": "Personalrecruiting", "topic": "HR", "assigned": "AHE", "start": "2026-05-15", "end": "2026-06-12", "progress": 0, "status": "Not started", "dependencies": []}, {"id": 18, "name": "Suche nach Dozenten/Ausbildern", "topic": "Ops", "assigned": "AHE", "start": "2026-06-01", "end": "2026-06-29", "progress": 0, "status": "Not started", "dependencies": [8]}, {"id": 19, "name": "Inhaltliche Kurserstellung", "topic": "Ops", "assigned": "KSC", "start": "2026-06-01", "end": "2026-06-29", "progress": 0, "status": "Not started", "dependencies": [18]}, {"id": 20, "name": "Erstellung der Vertragsvorlagen", "topic": "TN-Mgmt", "assigned": "AHE", "start": "2026-06-01", "end": "2026-06-29", "progress": 0, "status": "Not started", "dependencies": [1]}, {"id": 21, "name": "Prozess für Arbeitsagenturen/Bildungsgutscheine", "topic": "Compliance", "assigned": "AHE", "start": "2026-07-01", "end": "2026-07-29", "progress": 0, "status": "Not started", "dependencies": [22]}, {"id": 22, "name": "AZAV-Maßnahmenzertifizierung", "topic": "Compliance", "assigned": "KSC", "start": "2026-07-01", "end": "2026-08-02", "progress": 0, "status": "Not started", "dependencies": [11]}, {"id": 23, "name": "Erstellung der Lernplattform", "topic": "Ops", "assigned": "NEG", "start": "2026-07-01", "end": "2026-07-29", "progress": 0, "status": "Not started", "dependencies": [19]}, {"id": 24, "name": "Aufbau Prozesse & Systeme TN-Betreuung", "topic": "TN-Mgmt", "assigned": "KSC", "start": "2026-07-01", "end": "2026-07-29", "progress": 0, "status": "Not started", "dependencies": [27]}, {"id": 25, "name": "Entwicklung Sales-Prozess", "topic": "Sales", "assigned": "AHE", "start": "2026-07-01", "end": "2026-07-29", "progress": 0, "status": "Not started", "dependencies": []}, {"id": 26, "name": "System für Prüfungsvorbereitung", "topic": "Ops", "assigned": "KSC", "start": "2026-08-01", "end": "2026-08-29", "progress": 0, "status": "Not started", "dependencies": [8, 19]}, {"id": 27, "name": "Aufbau eines TN-Management-/CRM-Systems", "topic": "TN-Mgmt", "assigned": "NEG", "start": "2026-08-01", "end": "2026-08-29", "progress": 0, "status": "Not started", "dependencies": []}, {"id": 28, "name": "Lead-Prozess (Hubspot)", "topic": "Marketing", "assigned": "NEG", "start": "2026-08-01", "end": "2026-08-29", "progress": 0, "status": "Not started", "dependencies": []}, {"id": 29, "name": "Kontaktformulare, Callcenter, Terminbuchung", "topic": "Sales", "assigned": "NEG", "start": "2026-09-01", "end": "2026-09-29", "progress": 0, "status": "Not started", "dependencies": [25]}, {"id": 30, "name": "Erstellen & Schalten von Google Ads", "topic": "Marketing", "assigned": "NEG", "start": "2026-09-01", "end": "2026-09-29", "progress": 0, "status": "Not started", "dependencies": [9, 7]}, {"id": 31, "name": "Durchführung von Beratungsgesprächen", "topic": "Sales", "assigned": "AHE", "start": "2026-10-01", "end": "2026-10-29", "progress": 0, "status": "Not started", "dependencies": [27]}, {"id": 32, "name": "Erstellung der Angebote", "topic": "Sales", "assigned": "AHE", "start": "2026-10-01", "end": "2026-10-29", "progress": 0, "status": "Not started", "dependencies": [8]}, {"id": 33, "name": "Listing im KURSNET", "topic": "Marketing", "assigned": "NEG", "start": "2026-10-01", "end": "2026-10-29", "progress": 0, "status": "Not started", "dependencies": [9, 7]}, {"id": 34, "name": "Akquise von Praktikumsunternehmen", "topic": "Ops", "assigned": "KSC", "start": "2026-11-01", "end": "2026-11-29", "progress": 0, "status": "Not started", "dependencies": []}, {"id": 35, "name": "Laufendes Onboarding akquirierter TN", "topic": "TN-Mgmt", "assigned": "AHE", "start": "2026-11-01", "end": "2026-11-29", "progress": 0, "status": "Not started", "dependencies": [27, 31]}, {"id": 36, "name": "Organisation Arbeitsmaterialien & Versand", "topic": "TN-Mgmt", "assigned": "", "start": "2027-01-01", "end": "2027-01-29", "progress": 0, "status": "Not started", "dependencies": []}];
 
 let tasks = JSON.parse(JSON.stringify(INITIAL_DATA));
+function isOperationalTask(t){
+  const k = String(t.itemKind || '').toLowerCase();
+  return !k || k === 'task';
+}
+function operationalTasks(){ return tasks.filter(isOperationalTask); }
+function nextTaskId(){
+  return tasks.length ? Math.max(...tasks.map(t=>t.id)) + 1 : 1;
+}
 let selectedId = null;
 let focusId = null;
 let showCritical = false;
@@ -823,10 +883,20 @@ function formatDateGantt(s){
    DEPENDENCY ANALYSIS
 =========================================================== */
 function buildDepIndex(){
-  const up = new Map();     // id -> Set of direct predecessors
-  const down = new Map();   // id -> Set of direct successors
-  for (const t of tasks){ up.set(t.id, new Set(t.dependencies||[])); down.set(t.id, new Set()); }
-  for (const t of tasks){ for (const d of (t.dependencies||[])){ if (down.has(d)) down.get(d).add(t.id); } }
+  const op = operationalTasks();
+  const opIds = new Set(op.map(t=>t.id));
+  const up = new Map();
+  const down = new Map();
+  for (const t of op){
+    const preds = new Set((t.dependencies||[]).filter(d=>opIds.has(d)));
+    up.set(t.id, preds);
+    down.set(t.id, new Set());
+  }
+  for (const t of op){
+    for (const d of (t.dependencies||[])){
+      if (opIds.has(d) && down.has(d)) down.get(d).add(t.id);
+    }
+  }
   return { up, down };
 }
 function chainUpstream(id, idx){
@@ -841,11 +911,12 @@ function chainDownstream(id, idx){
 }
 /* Critical path = longest path through DAG weighted by duration */
 function computeCriticalPath(){
-  const byId = new Map(tasks.map(t=>[t.id,t]));
+  const op = operationalTasks();
+  const byId = new Map(op.map(t=>[t.id,t]));
   const idx = buildDepIndex();
   const order = topoSort(idx);
-  const dur = new Map(tasks.map(t=>[t.id, Math.max(1,daysBetween(t.start,t.end))]));
-  const longest = new Map(tasks.map(t=>[t.id, dur.get(t.id)])); // length ending at t
+  const dur = new Map(op.map(t=>[t.id, Math.max(1,daysBetween(t.start,t.end))]));
+  const longest = new Map(op.map(t=>[t.id, dur.get(t.id)])); // length ending at t
   const prev = new Map();
   for (const id of order){
     const preds = [...(idx.up.get(id)||[])];
@@ -868,7 +939,7 @@ function computeCriticalPath(){
   return {nodes:path, edges};
 }
 function topoSort(idx){
-  const inDeg = new Map(tasks.map(t=>[t.id,(idx.up.get(t.id)||new Set()).size]));
+  const inDeg = new Map(operationalTasks().map(t=>[t.id,(idx.up.get(t.id)||new Set()).size]));
   const q=[]; inDeg.forEach((v,k)=>{if(v===0)q.push(k)});
   const out=[];
   while(q.length){
@@ -891,6 +962,7 @@ function visibleTasks(){
   const today = new Date(); today.setHours(0,0,0,0);
   const horizon = new Date(today); horizon.setDate(horizon.getDate()+30);
   return tasks.filter(t=>{
+    if (!isOperationalTask(t)) return false;
     if (teamSet.size){
       const matchesNone = teamSet.has('__none__') && !t.assigned;
       const matchesTeam = t.assigned && teamSet.has(t.assigned);
@@ -932,7 +1004,7 @@ function orderByDate(list){
   for (const x of scored){
     out.push({type:'task', task:x.t, depth:0});
     // Insert subtasks in start-date order (only those in the filtered list)
-    const subs = tasks.filter(t => t.parentId === x.t.id && listIds.has(t.id))
+    const subs = tasks.filter(t => t.parentId === x.t.id && listIds.has(t.id) && isOperationalTask(t))
       .sort((a,b)=> a.start<b.start?-1 : a.start>b.start?1 : a.id-b.id);
     for (const s of subs) out.push({type:'task', task:s, depth:1});
   }
@@ -943,7 +1015,7 @@ function computeDateRange(){
   // Immer das volle Projekt rendern; die Views passen den Zoom dynamisch an, sodass im Viewport
   // genau eine Periode (Woche/Monat/Quartal/Jahr) sichtbar ist — der User scrollt/zieht horizontal.
   let min = null, max = null;
-  for (const t of tasks){
+  for (const t of operationalTasks()){
     const s = s2d(t.start), e = s2d(t.end);
     if (!min || s<min) min=s;
     if (!max || e>max) max=e;
@@ -1281,7 +1353,7 @@ function truncate(s,n){return s.length>n ? s.slice(0,n-1)+'…' : s}
    ARROW ROUTING (right-angle polylines)
 =========================================================== */
 function drawArrows(centers, idx, cpInfo, upSet, downSet){
-  for (const t of tasks){
+  for (const t of operationalTasks()){
     for (const dep of (t.dependencies||[])){
       const a = centers.get(dep), b = centers.get(t.id);
       if (!a || !b) continue;
@@ -1441,7 +1513,7 @@ function openDetail(id){
   // Deps picker
   const picker = document.getElementById('fDeps');
   picker.innerHTML = '';
-  for (const other of tasks){
+  for (const other of operationalTasks()){
     if (other.id===t.id) continue;
     const row = document.createElement('label');
     row.className='dp-row';
@@ -1465,6 +1537,20 @@ function fillDetailForm(t){
   document.getElementById('fEnd').value = t.end;
   document.getElementById('fStatus').value = t.status||'Not started';
   document.getElementById('fProgress').value = t.progress||0;
+  const okrWrap = document.getElementById('fOkrKrWrap');
+  const okrSel = document.getElementById('fOkrKr');
+  if (okrWrap && okrSel){
+    okrWrap.style.display = isOperationalTask(t) ? '' : 'none';
+    if (isOperationalTask(t)) populateOkrKrSelect(okrSel, t);
+  }
+}
+function populateOkrKrSelect(sel, t){
+  const krs = tasks.filter(x => String(x.itemKind || '').toLowerCase() === 'key_result');
+  sel.innerHTML = '<option value="">— keins —</option>' + krs.map(kr=>{
+    const obj = tasks.find(o => o.id === kr.okrObjectiveId && String(o.itemKind || '').toLowerCase() === 'objective');
+    const label = (obj ? obj.name + ' › ' : '') + (kr.name || 'Key Result');
+    return `<option value="${kr.id}" ${Number(t.okrKeyResultId) === kr.id ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+  }).join('');
 }
 function populateTopicSelect(sel){
   sel.innerHTML = '';
@@ -1474,7 +1560,7 @@ function populateTopicSelect(sel){
   }
 }
 function populateTeamSelect(sel){
-  const teams = [...new Set(tasks.map(t=>t.assigned).filter(Boolean))].sort();
+  const teams = [...new Set(operationalTasks().map(t=>t.assigned).filter(Boolean))].sort();
   sel.innerHTML = '<option value="">—</option>';
   for (const tm of teams){
     const o=document.createElement('option'); o.value=tm; o.textContent=tm;
@@ -1525,8 +1611,14 @@ document.getElementById('saveTask').addEventListener('click', ()=>{
   t.progress = Math.max(0, Math.min(100, Number(document.getElementById('fProgress').value||0)));
   const deps = [...document.querySelectorAll('#fDeps input:checked')].map(cb=>Number(cb.value));
   t.dependencies = deps;
+  const okrSel = document.getElementById('fOkrKr');
+  if (okrSel && isOperationalTask(t)){
+    const v = okrSel.value;
+    t.okrKeyResultId = v ? Number(v) : null;
+  }
   render();
   renderChain(t.id);
+  if (mode === 'okr' && typeof renderOkr === 'function') renderOkr();
 });
 
 document.getElementById('deleteTask').addEventListener('click', ()=>{
@@ -1535,12 +1627,14 @@ document.getElementById('deleteTask').addEventListener('click', ()=>{
   tasks = tasks.filter(x=>x.id!==selectedId);
   for (const t of tasks) t.dependencies = (t.dependencies||[]).filter(d=>d!==selectedId);
   clearFocus();
+  if (mode === 'okr' && typeof renderOkr === 'function') renderOkr();
 });
 
 document.getElementById('addTask').addEventListener('click', ()=>{
-  const newId = tasks.length ? Math.max(...tasks.map(t=>t.id))+1 : 1;
+  if (mode === 'okr') return;
+  const newId = nextTaskId();
   const today = new Date(); today.setHours(0,0,0,0);
-  const t = { id:newId, name:'Neue Aufgabe', topic:TOPICS[0], assigned:'', start:d2s(today), end:d2s(addDays(today,7)), progress:0, status:'Not started', dependencies:[], attachments:[], notes:'' };
+  const t = { id:newId, name:'Neue Aufgabe', topic:TOPICS[0], assigned:'', start:d2s(today), end:d2s(addDays(today,7)), progress:0, status:'Not started', dependencies:[], attachments:[], notes:'', itemKind:'task', okrObjectiveId:null, okrKeyResultId:null };
   tasks.push(t);
   selectTask(newId);
 });
@@ -1573,6 +1667,7 @@ function clearAllFilters(){
   render();
   if (typeof renderBoard === 'function') renderBoard();
   if (typeof renderCalendar === 'function' && mode==='calendar') renderCalendar();
+  if (typeof renderOkr === 'function' && mode==='okr') renderOkr();
 }
 
 function applyAllRenderers(){
@@ -1580,11 +1675,12 @@ function applyAllRenderers(){
   if (typeof render === 'function') render();
   if (typeof renderBoard === 'function') renderBoard();
   if (typeof renderCalendar === 'function' && mode==='calendar') renderCalendar();
+  if (typeof renderOkr === 'function' && mode==='okr') renderOkr();
 }
 
 function openFilterPanel(){
   // Build available teams
-  const teams = [...new Set(tasks.map(t=>t.assigned).filter(Boolean))].sort();
+  const teams = [...new Set(operationalTasks().map(t=>t.assigned).filter(Boolean))].sort();
   const html = `
     <div class="bp-filter-panel">
       <div class="bp-filter-section">
@@ -1775,11 +1871,11 @@ window.addEventListener('resize', ()=>{
 // Fokus kann weiterhin per Klick auf einen Balken aktiviert und per Escape verlassen werden.
 
 /* ===========================================================
-   MODE SWITCH (Board / Gantt / Dashboard / Kalender)
+   MODE SWITCH (Board / OKR / Gantt / Dashboard / Kalender)
 =========================================================== */
 let mode = 'board';
 let asideOpen = false;
-const MODE_LABEL = { board:'Board', gantt:'Gantt', dashboard:'Dashboard', calendar:'Kalender' };
+const MODE_LABEL = { board:'Board', okr:'OKRs', gantt:'Gantt', dashboard:'Dashboard', calendar:'Kalender' };
 
 /* Auf-/Zuklappen der Detailansicht (nur im Gantt-Modus relevant) */
 function setAsideOpen(open){
@@ -1801,20 +1897,26 @@ function setMode(m){
   const dashPane = document.getElementById('dashboardPane');
   const boardPane = document.getElementById('boardPane');
   const calPane = document.getElementById('calendarPane');
+  const okrPane = document.getElementById('okrPane');
   const main = document.getElementById('mainContainer');
-  // Update label on the Ansicht button
   const lbl = document.getElementById('modeBtnLabel');
   if (lbl) lbl.textContent = MODE_LABEL[m] || m;
-  // Toggle "gantt-only" toolbar elements
+  const pt = document.querySelector('.page-title');
+  if (pt){
+    const titles = { board:'Aufgabenplanung', gantt:'Gantt-Ansicht', calendar:'Kalender', dashboard:'Dashboard', okr:'OKRs' };
+    pt.textContent = titles[m] || 'Aufgabenplanung';
+  }
+  const addBtn = document.getElementById('addTask');
+  if (addBtn) addBtn.style.display = (m === 'okr') ? 'none' : '';
   document.querySelectorAll('.gantt-only').forEach(el=>{
     el.style.display = (m==='gantt') ? '' : 'none';
   });
-  // Reset all panes
   ganttPane.style.display='none';
   aside.style.display='none';
   dashPane.classList.remove('active');
   boardPane.classList.remove('active');
   calPane.classList.remove('active');
+  if (okrPane) okrPane.classList.remove('active');
 
   if (m==='board'){
     boardPane.classList.add('active');
@@ -1828,15 +1930,17 @@ function setMode(m){
     calPane.classList.add('active');
     main.style.gridTemplateColumns = '1fr';
     renderCalendar();
+  } else if (m==='okr'){
+    if (okrPane) okrPane.classList.add('active');
+    main.style.gridTemplateColumns = '1fr';
+    if (typeof renderOkr === 'function') renderOkr();
   } else {
     ganttPane.style.display='';
-    // Detailansicht ist standardmäßig zu — öffnet sich erst beim Klick auf eine Aufgabe
     aside.style.display = asideOpen ? '' : 'none';
     main.style.gridTemplateColumns = asideOpen ? '1fr 380px' : '1fr';
     render();
     scrollToCurrentMonth();
   }
-  // Aktiven Zustand der Nav-Rail synchronisieren
   if (typeof syncNavRailActive === 'function') syncNavRailActive();
 }
 
@@ -1870,7 +1974,7 @@ function initials(name){
 function renderTeamCluster(){
   const host = document.getElementById('teamCluster');
   if (!host) return;
-  const teams = [...new Set(tasks.map(t=>t.assigned).filter(Boolean))].sort();
+  const teams = [...new Set(operationalTasks().map(t=>t.assigned).filter(Boolean))].sort();
   const max = 5;
   const visible = teams.slice(0, max);
   const overflow = Math.max(0, teams.length - max);
@@ -1954,7 +2058,7 @@ function renderDashboard(){
 
 function dashMonthList(){
   let min=null, max=null;
-  for (const t of tasks){ const s=s2d(t.start), e=s2d(t.end); if(!min||s<min)min=s; if(!max||e>max)max=e; }
+  for (const t of operationalTasks()){ const s=s2d(t.start), e=s2d(t.end); if(!min||s<min)min=s; if(!max||e>max)max=e; }
   if (!min) return [];
   const months = [];
   let cur = startOfMonth(min);
@@ -1975,10 +2079,11 @@ function renderDashTabs(){
   }
 
   const parts = [];
-  parts.push(`<button class="dash-tab overall ${dashScope==='overall'?'active':''}" data-scope="overall">Gesamtübersicht <span class="count">${tasks.length}</span></button>`);
+  const opAll = operationalTasks();
+  parts.push(`<button class="dash-tab overall ${dashScope==='overall'?'active':''}" data-scope="overall">Gesamtübersicht <span class="count">${opAll.length}</span></button>`);
   for (const m of months){
     const key = monthKey(m);
-    const count = tasks.filter(t=>overlapsMonth(t, m)).length;
+    const count = opAll.filter(t=>overlapsMonth(t, m)).length;
     const isNow = key === todayKey;
     parts.push(`<button class="dash-tab ${dashScope===key?'active':''}" data-scope="${key}">${MONTHS_SHORT[m.getMonth()]} ${String(m.getFullYear()).slice(-2)}${isNow?' <span class="now-dot" title="Aktueller Monat"></span>':''} <span class="count">${count}</span></button>`);
   }
@@ -2056,21 +2161,22 @@ function svgHalfDonut(percent, size=180, thick=26){
 function renderDashExec(){
   const host = document.getElementById('dashExec');
   const today = new Date(); today.setHours(0,0,0,0);
-  const byId = new Map(tasks.map(t=>[t.id,t]));
+  const byId = new Map(operationalTasks().map(t=>[t.id,t]));
 
   // Determine scope
   const isOverall = dashScope === 'overall';
   let scopeTasks, title, subtitle, mStart = null;
+  const opAll = operationalTasks();
   if (isOverall){
-    scopeTasks = tasks.slice();
+    scopeTasks = opAll.slice();
     title = 'Gesamtübersicht';
     const months = dashMonthList();
     const first = months[0], last = months[months.length-1];
-    subtitle = first && last ? `${MONTHS_SHORT[first.getMonth()]} ${first.getFullYear()} – ${MONTHS_SHORT[last.getMonth()]} ${last.getFullYear()} · ${tasks.length} Aufgaben` : `${tasks.length} Aufgaben`;
+    subtitle = first && last ? `${MONTHS_SHORT[first.getMonth()]} ${first.getFullYear()} – ${MONTHS_SHORT[last.getMonth()]} ${last.getFullYear()} · ${opAll.length} Aufgaben` : `${opAll.length} Aufgaben`;
   } else {
     const [y,mo] = dashScope.split('-').map(Number);
     mStart = new Date(y, mo-1, 1);
-    scopeTasks = tasks.filter(t=>overlapsMonth(t, mStart));
+    scopeTasks = opAll.filter(t=>overlapsMonth(t, mStart));
     title = monthLabelLong(mStart) + ' ' + mStart.getFullYear();
     const mEnd = new Date(y, mo, 0);
     const todayMonth = startOfMonth(today);
@@ -2271,7 +2377,7 @@ function boardTaskMonth(t){
 }
 
 function getSubtasks(parentId){
-  return tasks.filter(t => t.parentId === parentId).sort((a,b)=> a.start<b.start?-1 : a.start>b.start?1 : a.id-b.id);
+  return tasks.filter(t => t.parentId === parentId && isOperationalTask(t)).sort((a,b)=> a.start<b.start?-1 : a.start>b.start?1 : a.id-b.id);
 }
 function isSubtask(t){ return t.parentId != null }
 
@@ -2282,7 +2388,7 @@ function renderBoard(){
   // Apply active filters to top-level tasks
   const visibleSet = new Set(visibleTasks().map(t=>t.id));
   // Group top-level tasks by their start month
-  const topLevel = tasks.filter(t=>!isSubtask(t) && visibleSet.has(t.id));
+  const topLevel = operationalTasks().filter(t=>!isSubtask(t) && visibleSet.has(t.id));
   const byMonth = {};
   for (const b of BOARD_MONTHS) byMonth[boardMonthKey(b.y,b.m)] = [];
   const otherBucket = [];
@@ -2558,7 +2664,7 @@ function openStatusPop(anchor, t){
 }
 
 function openPersonPop(anchor, t){
-  const teams = [...new Set(tasks.map(x=>x.assigned).filter(Boolean))].sort();
+  const teams = [...new Set(operationalTasks().map(x=>x.assigned).filter(Boolean))].sort();
   const extras = ["AHE","KSC","NEG","CKE"].filter(x=>!teams.includes(x));
   const all = [...teams, ...extras];
   const html = `
@@ -2611,7 +2717,7 @@ function openDepsPop(anchor, t){
   const excludeIds = new Set([t.id]);
   // Exclude subtasks of self
   getSubtasks(t.id).forEach(s=>excludeIds.add(s.id));
-  const candidates = tasks.filter(x=>!excludeIds.has(x.id));
+  const candidates = operationalTasks().filter(x=>!excludeIds.has(x.id));
   // Group by month for readability
   candidates.sort((a,b)=> a.start<b.start?-1 : a.start>b.start?1 : a.id-b.id);
   const selectedIds = new Set(t.dependencies||[]);
@@ -2739,7 +2845,7 @@ function openNotesPop(anchor, t){
 
 /* -------- Add task / subtask -------- */
 function addTaskInMonth(key, parentId){
-  const newId = tasks.length ? Math.max(...tasks.map(t=>t.id))+1 : 1;
+  const newId = nextTaskId();
   let y, m;
   if (key === 'other'){
     const d = new Date(); y=d.getFullYear(); m=d.getMonth();
@@ -2761,6 +2867,9 @@ function addTaskInMonth(key, parentId){
     dependencies: [],
     attachments: [],
     notes: '',
+    itemKind: 'task',
+    okrObjectiveId: null,
+    okrKeyResultId: null,
   };
   if (parentId) t.parentId = parentId;
   tasks.push(t);
@@ -2776,7 +2885,7 @@ function addSubtask(parentId){
   const parent = tasks.find(x=>x.id===parentId);
   if (!parent) return;
   // Inherit parent month window but default to parent's dates
-  const newId = tasks.length ? Math.max(...tasks.map(t=>t.id))+1 : 1;
+  const newId = nextTaskId();
   const t = {
     id:newId,
     name:'Neue Unteraufgabe',
@@ -2790,6 +2899,9 @@ function addSubtask(parentId){
     attachments: [],
     notes: '',
     parentId: parentId,
+    itemKind: 'task',
+    okrObjectiveId: null,
+    okrKeyResultId: null,
   };
   tasks.push(t);
   renderBoard();
@@ -2797,6 +2909,218 @@ function addSubtask(parentId){
     const cell = document.querySelector(`.bp-cell.tn[data-id="${newId}"]`);
     if (cell) editName(cell, t);
   }, 30);
+}
+
+/* ===========================================================
+   OKR VIEW
+=========================================================== */
+function objectivesList(){
+  return tasks.filter(t => String(t.itemKind || '').toLowerCase() === 'objective')
+    .sort((a,b)=>{ if (a.start !== b.start) return a.start < b.start ? -1 : 1; return a.id - b.id; });
+}
+function keyResultsForObjective(objId){
+  return tasks.filter(t => String(t.itemKind || '').toLowerCase() === 'key_result' && Number(t.okrObjectiveId) === objId)
+    .sort((a,b)=> a.id - b.id);
+}
+function tasksForKr(krId){
+  return operationalTasks().filter(t => Number(t.okrKeyResultId) === krId);
+}
+function krDisplayProgress(kr){
+  const linked = tasksForKr(kr.id);
+  if (linked.length){
+    return Math.round(linked.reduce((s,x)=>s + (Number(x.progress) || 0), 0) / linked.length);
+  }
+  return Math.round(Number(kr.progress) || 0);
+}
+function objectiveDisplayProgress(o){
+  const krs = keyResultsForObjective(o.id);
+  if (!krs.length) return Math.round(Number(o.progress) || 0);
+  const parts = krs.map(krDisplayProgress);
+  return Math.round(parts.reduce((a,b)=>a + b, 0) / parts.length);
+}
+function addObjective(){
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const id = nextTaskId();
+  tasks.push({
+    id, name:'Neues Objective', topic:'Ops', assigned:'', start:d2s(today), end:d2s(addDays(today, 90)),
+    progress:0, status:'Planned', dependencies:[], attachments:[], notes:'',
+    itemKind:'objective', okrObjectiveId:null, okrKeyResultId:null
+  });
+  renderOkr();
+}
+function addKeyResult(objectiveId){
+  const obj = tasks.find(x => x.id === objectiveId);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const id = nextTaskId();
+  tasks.push({
+    id, name:'Neues Key Result', topic: obj ? obj.topic : TOPICS[0], assigned:'',
+    start: obj ? obj.start : d2s(today), end: obj ? obj.end : d2s(addDays(today, 90)),
+    progress:0, status:'Planned', dependencies:[], attachments:[], notes:'',
+    itemKind:'key_result', okrObjectiveId: objectiveId, okrKeyResultId:null
+  });
+  renderOkr();
+}
+function deleteObjectiveCascade(id){
+  if (!confirm('Objective mitsamt allen Key Results löschen? Aufgaben werden vom KR getrennt.')) return;
+  const krIds = keyResultsForObjective(id).map(k => k.id);
+  for (const krId of krIds){
+    operationalTasks().forEach(t => { if (Number(t.okrKeyResultId) === krId) t.okrKeyResultId = null; });
+  }
+  const removeIds = new Set([id, ...krIds]);
+  tasks = tasks.filter(t => !removeIds.has(t.id));
+  renderOkr();
+  applyAllRenderers();
+}
+function deleteKeyResultCascade(id){
+  if (!confirm('Key Result löschen? Zugeordnete Aufgaben werden vom KR getrennt.')) return;
+  operationalTasks().forEach(t => { if (Number(t.okrKeyResultId) === id) t.okrKeyResultId = null; });
+  tasks = tasks.filter(t => t.id !== id);
+  renderOkr();
+  applyAllRenderers();
+}
+function renderOkr(){
+  const root = document.getElementById('okrRoot');
+  if (!root) return;
+  const objs = objectivesList();
+  let html = `
+    <div class="okr-head">
+      <div>
+        <h2>Objectives &amp; Key Results</h2>
+        <p>Hier siehst du alle OKR-Ebenen: Objectives, messbare Key Results und zugeordnete operative Aufgaben. Der Fortschritt eines Key Results ist der Durchschnitt der verknüpften Aufgaben — ohne Aufgaben zählt der manuelle Wert am KR.</p>
+      </div>
+      <div class="okr-actions">
+        <button type="button" class="okr-btn primary" id="okrAddObjective">+ Objective</button>
+      </div>
+    </div>`;
+  if (!objs.length){
+    html += `<div class="okr-empty">Noch keine Objectives. Lege das erste Ziel mit „+ Objective“ an.</div>`;
+    root.innerHTML = html;
+    document.getElementById('okrAddObjective').addEventListener('click', addObjective);
+    return;
+  }
+  for (const o of objs){
+    const krs = keyResultsForObjective(o.id);
+    const opct = objectiveDisplayProgress(o);
+    html += `
+    <div class="okr-card" data-okr-obj="${o.id}">
+      <div class="okr-card-h">
+        <div style="flex:1; min-width:0">
+          <h3>${escapeHtml(o.name)}</h3>
+          <div class="okr-card-meta">${formatDateShort(o.start)} → ${formatDateShort(o.end)} · Ø Fortschritt ${opct}% · ${krs.length} Key Result${krs.length === 1 ? '' : 's'}</div>
+          <div class="okr-card-bar" aria-hidden="true"><i style="width:${opct}%"></i></div>
+        </div>
+        <div class="okr-card-tools">
+          <button type="button" class="okr-icon-btn" title="Objective bearbeiten" data-o-edit="${o.id}">✎</button>
+          <button type="button" class="okr-icon-btn okr-danger" title="Objective löschen" data-o-del="${o.id}">🗑</button>
+          <button type="button" class="okr-btn primary" data-o-addkr="${o.id}">+ Key Result</button>
+        </div>
+      </div>`;
+    if (!krs.length){
+      html += `<div class="okr-kr"><div class="okr-empty" style="margin:12px 0;padding:28px">Noch keine Key Results.</div></div>`;
+    }
+    for (const kr of krs){
+      const linked = tasksForKr(kr.id);
+      const roll = krDisplayProgress(kr);
+      const unlinkedPick = operationalTasks().filter(x => !x.okrKeyResultId);
+      html += `
+      <div class="okr-kr" data-kr-id="${kr.id}">
+        <div class="okr-kr-top">
+          <div>
+            <div class="okr-kr-title">${escapeHtml(kr.name)}</div>
+            ${(kr.notes || '').trim() ? `<p class="okr-kr-notes">${escapeHtml(kr.notes)}</p>` : ''}
+            <div class="okr-mini-bar"><i style="width:${roll}%"></i></div>
+            <div class="okr-card-meta">Anzeige-Fortschritt: ${roll}% · ${linked.length} Aufgabe${linked.length === 1 ? '' : 'n'}</div>
+          </div>
+          <div class="okr-card-tools">
+            <button type="button" class="okr-icon-btn" title="Key Result bearbeiten" data-kr-edit="${kr.id}">✎</button>
+            <button type="button" class="okr-icon-btn okr-danger" title="Key Result löschen" data-kr-del="${kr.id}">🗑</button>
+          </div>
+        </div>
+        <div class="okr-task-row">
+          ${linked.length ? linked.map(t => `
+            <span class="okr-chip-wrap">
+              <button type="button" class="okr-chip" data-jump-task="${t.id}">${escapeHtml(t.name)} <small>${t.progress || 0}%</small></button>
+              <button type="button" class="okr-unlink" title="Zuordnung entfernen" data-kr-unlink="${t.id}">×</button>
+            </span>`).join('') : '<span style="font-size:12px;color:var(--mute)">Keine Aufgaben zugeordnet.</span>'}
+        </div>
+        <div class="okr-link-row">
+          <span>Weitere Aufgabe</span>
+          <select data-kr-add="${kr.id}">
+            <option value="">— ohne KR — wählen zum Verknüpfen</option>
+            ${unlinkedPick.map(x => `<option value="${x.id}">${escapeHtml(x.name)}</option>`).join('')}
+          </select>
+        </div>
+      </div>`;
+    }
+    html += `</div>`;
+  }
+  html += `<div style="margin-top:20px"><button type="button" class="okr-btn primary" id="okrAddObjective2">+ weiteres Objective</button></div>`;
+  root.innerHTML = html;
+  document.getElementById('okrAddObjective').addEventListener('click', addObjective);
+  const o2 = document.getElementById('okrAddObjective2');
+  if (o2) o2.addEventListener('click', addObjective);
+  root.querySelectorAll('[data-o-addkr]').forEach(btn => {
+    btn.addEventListener('click', () => addKeyResult(Number(btn.getAttribute('data-o-addkr'))));
+  });
+  root.querySelectorAll('[data-o-edit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.getAttribute('data-o-edit'));
+      const o = tasks.find(x => x.id === id); if (!o) return;
+      const nm = prompt('Objective-Titel', o.name); if (nm === null) return; o.name = nm.trim() || o.name;
+      const n1 = prompt('Start (YYYY-MM-DD)', o.start); if (n1 !== null && n1.trim()) o.start = n1.trim();
+      const n2 = prompt('Ende (YYYY-MM-DD)', o.end); if (n2 !== null && n2.trim()) o.end = n2.trim();
+      const nt = prompt('Notizen / Kontext', o.notes || ''); if (nt !== null) o.notes = nt;
+      renderOkr();
+    });
+  });
+  root.querySelectorAll('[data-o-del]').forEach(btn => {
+    btn.addEventListener('click', () => deleteObjectiveCascade(Number(btn.getAttribute('data-o-del'))));
+  });
+  root.querySelectorAll('[data-kr-edit]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const id = Number(btn.getAttribute('data-kr-edit'));
+      const kr = tasks.find(x => x.id === id); if (!kr) return;
+      const nm = prompt('Key-Result-Titel', kr.name); if (nm === null) return; kr.name = nm.trim() || kr.name;
+      const n1 = prompt('Start (YYYY-MM-DD)', kr.start); if (n1 !== null && n1.trim()) kr.start = n1.trim();
+      const n2 = prompt('Ende (YYYY-MM-DD)', kr.end); if (n2 !== null && n2.trim()) kr.end = n2.trim();
+      const p = prompt('Fortschritt % (nur ohne verknüpfte Aufgaben sichtbar)', String(kr.progress ?? 0));
+      if (p !== null && p.trim() !== '') kr.progress = Math.max(0, Math.min(100, Number(p) || 0));
+      const nt = prompt('Notizen / Messlogik', kr.notes || ''); if (nt !== null) kr.notes = nt;
+      renderOkr();
+    });
+  });
+  root.querySelectorAll('[data-kr-del]').forEach(btn => {
+    btn.addEventListener('click', () => deleteKeyResultCascade(Number(btn.getAttribute('data-kr-del'))));
+  });
+  root.querySelectorAll('[data-jump-task]').forEach(b => {
+    b.addEventListener('click', () => {
+      const id = Number(b.getAttribute('data-jump-task'));
+      setMode('board');
+      setTimeout(() => { selectTask(id); }, 40);
+    });
+  });
+  root.querySelectorAll('[data-kr-unlink]').forEach(b => {
+    b.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      const id = Number(b.getAttribute('data-kr-unlink'));
+      const tk = tasks.find(x => x.id === id);
+      if (tk && isOperationalTask(tk)) tk.okrKeyResultId = null;
+      renderOkr();
+      applyAllRenderers();
+    });
+  });
+  root.querySelectorAll('select[data-kr-add]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      const krId = Number(sel.getAttribute('data-kr-add'));
+      const taskId = Number(sel.value);
+      sel.value = '';
+      if (!taskId) return;
+      const tk = tasks.find(x => x.id === taskId);
+      if (tk && isOperationalTask(tk)) tk.okrKeyResultId = krId;
+      renderOkr();
+      applyAllRenderers();
+    });
+  });
 }
 
 /* ===========================================================
@@ -3051,17 +3375,23 @@ function _parseUrlError(){
   history.replaceState(null, '', window.location.pathname + window.location.search);
   return e;
 }
-async function requestMagicLink(email){
-  const redirect = window.location.origin + window.location.pathname;
-  const r = await fetch(SUPABASE_URL + '/auth/v1/otp?redirect_to=' + encodeURIComponent(redirect), {
+async function signInWithPassword(email, password){
+  const r = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=password', {
     method: 'POST',
-    headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, create_user: false })
+    headers: { apikey: SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
   });
+  const txt = await r.text();
+  let d;
+  try { d = JSON.parse(txt); } catch(e){ throw new Error('Ungültige Antwort vom Server.'); }
   if (!r.ok){
-    const txt = await r.text().catch(()=>String(r.status));
-    throw new Error(r.status + ': ' + txt);
+    const msg = d.error_description || d.msg || d.message || txt;
+    throw new Error(typeof msg === 'string' ? msg : String(r.status));
   }
+  const expAt = d.expires_at
+    ? Number(d.expires_at)
+    : (d.expires_in ? Math.floor(Date.now() / 1000) + Number(d.expires_in) : null);
+  return _saveAuth(d.access_token, d.refresh_token, expAt);
 }
 async function logout(){
   // Server-seitig ausloggen (revoked refresh-token + alle Sessions)
@@ -3119,6 +3449,7 @@ function updateUserDisplay(){
 
 // DB ↔ App Mapping (DB nutzt snake_case + start_date/end_date weil "end" reserved word ist)
 function dbToApp(r){
+  const ik = (r.item_kind != null && r.item_kind !== '') ? String(r.item_kind).toLowerCase() : 'task';
   return {
     id: r.id,
     name: r.name,
@@ -3131,7 +3462,10 @@ function dbToApp(r){
     parentId: r.parent_id ?? null,
     dependencies: Array.isArray(r.dependencies) ? r.dependencies : [],
     attachments: Array.isArray(r.attachments) ? r.attachments : [],
-    notes: r.notes || ''
+    notes: r.notes || '',
+    itemKind: ik,
+    okrObjectiveId: r.okr_objective_id != null ? Number(r.okr_objective_id) : null,
+    okrKeyResultId: r.okr_key_result_id != null ? Number(r.okr_key_result_id) : null
   };
 }
 function appToDb(t){
@@ -3147,7 +3481,10 @@ function appToDb(t){
     parent_id: t.parentId ?? null,
     dependencies: Array.isArray(t.dependencies) ? t.dependencies : [],
     attachments: Array.isArray(t.attachments) ? t.attachments : [],
-    notes: t.notes || ''
+    notes: t.notes || '',
+    item_kind: t.itemKind || 'task',
+    okr_objective_id: t.okrObjectiveId != null ? t.okrObjectiveId : null,
+    okr_key_result_id: t.okrKeyResultId != null ? t.okrKeyResultId : null
   };
 }
 
@@ -3183,7 +3520,9 @@ function _hashTask(t){
     t.start||'', t.end||'',
     t.status||'', Number(t.progress)||0,
     t.parentId??null,
-    t.dependencies||[], t.attachments||[], t.notes||''
+    t.dependencies||[], t.attachments||[], t.notes||'',
+    String(t.itemKind||'task'),
+    t.okrObjectiveId??null, t.okrKeyResultId??null
   ]);
 }
 function _seedSnapshotFromTasks(){
@@ -3229,6 +3568,7 @@ async function syncTasksToDB(){
   wrap('render');
   wrap('renderBoard');
   wrap('renderCalendar');
+  wrap('renderOkr');
 })();
 
 // Offline-/Fallback-Banner
@@ -3265,7 +3605,9 @@ async function reloadFromDB(){
     if (mode === 'board')      renderBoard();
     else if (mode === 'gantt') render();
     else if (mode === 'calendar') renderCalendar();
+    else if (mode === 'okr' && typeof renderOkr === 'function') renderOkr();
     else if (mode === 'dashboard' && typeof renderDashboard === 'function') renderDashboard();
+    if (typeof renderTeamCluster === 'function') renderTeamCluster();
   } catch(err){
     console.error('[Supabase] Initial-Load fehlgeschlagen:', err);
     showSyncBanner('Keine Verbindung zu Supabase. Lokale Demo-Daten werden angezeigt — Änderungen werden NICHT gespeichert.', 'error');
@@ -3309,7 +3651,9 @@ function subscribeRealtime(){
             if (mode === 'board')      renderBoard();
             else if (mode === 'gantt') render();
             else if (mode === 'calendar') renderCalendar();
+            else if (mode === 'okr' && typeof renderOkr === 'function') renderOkr();
             else if (mode === 'dashboard' && typeof renderDashboard === 'function') renderDashboard();
+            if (typeof renderTeamCluster === 'function') renderTeamCluster();
           }).catch(err=>{
             console.error('[Supabase] Realtime reload error:', err);
             _syncSuspended = false;
@@ -3354,7 +3698,9 @@ window.addEventListener('focus', async ()=>{
     if (mode === 'board')      renderBoard();
     else if (mode === 'gantt') render();
     else if (mode === 'calendar') renderCalendar();
+    else if (mode === 'okr' && typeof renderOkr === 'function') renderOkr();
     else if (mode === 'dashboard' && typeof renderDashboard === 'function') renderDashboard();
+    if (typeof renderTeamCluster === 'function') renderTeamCluster();
   } catch(e){ /* ignore — Realtime/Sync übernimmt beim nächsten Mal */ }
 });
 
@@ -3364,9 +3710,11 @@ window.addEventListener('focus', async ()=>{
 function showLoginOverlay(errMsg){
   const ov = document.getElementById('loginOverlay');
   if (ov) ov.classList.remove('hidden');
+  const btn = document.getElementById('loginSubmit');
+  if (btn){ btn.disabled = false; btn.textContent = 'Anmelden'; }
   if (errMsg){
     const m = document.getElementById('loginMsg');
-    if (m){ m.className = 'login-msg err'; m.textContent = errMsg; }
+    if (m){ m.className = 'login-msg err'; m.textContent = errMsg; m.style.display = ''; }
   }
 }
 function hideLoginOverlay(){
@@ -3374,31 +3722,55 @@ function hideLoginOverlay(){
   if (ov) ov.classList.add('hidden');
 }
 
-// Login-Form-Handler
+// Login-Form-Handler (E-Mail + Passwort, keine Registrierung)
 document.getElementById('loginForm').addEventListener('submit', async (e)=>{
   e.preventDefault();
   const email = document.getElementById('loginEmail').value.trim().toLowerCase();
+  const password = document.getElementById('loginPassword').value;
   const btn = document.getElementById('loginSubmit');
   const msg = document.getElementById('loginMsg');
-  if (!email){ return; }
-  btn.disabled = true; btn.textContent = 'Sende Link…';
-  msg.className = 'login-msg'; msg.textContent = '';
+  if (!email || !password){
+    msg.className = 'login-msg err';
+    msg.textContent = 'Bitte E-Mail und Passwort eingeben.';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = 'Anmelden…';
+  msg.className = 'login-msg';
+  msg.textContent = '';
   try {
-    await requestMagicLink(email);
-    msg.className = 'login-msg ok';
-    msg.textContent = 'Link an ' + email + ' geschickt. Schau in deinen Posteingang (auch Spam-Ordner) und klick auf den Link in der Mail.';
-    btn.disabled = false; btn.textContent = 'Link erneut senden';
+    const ok = await signInWithPassword(email, password);
+    if (!ok){
+      msg.className = 'login-msg err';
+      msg.textContent = 'Anmeldung fehlgeschlagen — Token unvollständig.';
+      btn.disabled = false;
+      btn.textContent = 'Anmelden';
+      return;
+    }
+    msg.className = 'login-msg';
+    msg.textContent = '';
+    hideLoginOverlay();
+    updateUserDisplay();
+    refreshFilterButton();
+    setMode('board');
+    try {
+      await reloadFromDB();
+      subscribeRealtime();
+    } catch(err2){
+      console.error('[Init nach Login]', err2);
+    }
   } catch(err){
     msg.className = 'login-msg err';
     const txt = String(err.message || err);
-    if (txt.includes('400') || txt.toLowerCase().includes('not_found') || txt.toLowerCase().includes('signups not allowed') || txt.toLowerCase().includes('not authorized')){
-      msg.textContent = 'Diese Mail ist nicht eingeladen. Bitte wende dich an die Administration.';
+    if (/invalid login|invalid_grant|email not confirmed|wrong password|invalid credentials/i.test(txt)){
+      msg.textContent = 'E-Mail oder Passwort ist falsch — oder der Account ist noch nicht freigeschaltet.';
     } else if (txt.includes('429') || txt.toLowerCase().includes('rate')){
-      msg.textContent = 'Zu viele Anfragen — bitte ein paar Minuten warten und nochmal versuchen.';
+      msg.textContent = 'Zu viele Versuche — bitte kurz warten und erneut versuchen.';
     } else {
       msg.textContent = 'Login fehlgeschlagen: ' + txt;
     }
-    btn.disabled = false; btn.textContent = 'Login-Link per Mail anfordern';
+    btn.disabled = false;
+    btn.textContent = 'Anmelden';
   }
 });
 
@@ -3440,7 +3812,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e)=>{
   }
 
   if (!authed){
-    showLoginOverlay(urlErr ? ('Login-Link ungültig oder abgelaufen: ' + urlErr) : null);
+    showLoginOverlay(urlErr ? ('Anmeldung abgebrochen: ' + urlErr) : null);
     return;
   }
   // Erfolgreich eingeloggt → Aktivität markieren (zählt als „benutzt")

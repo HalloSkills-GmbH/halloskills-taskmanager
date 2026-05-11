@@ -1,0 +1,15 @@
+@import "./halloskills-design.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+  body {
+    @apply antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+}

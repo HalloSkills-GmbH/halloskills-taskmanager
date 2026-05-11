@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Suspense, useMemo, useState, useTransition } from "react";
+import { Suspense, useEffect, useMemo, useState, useTransition } from "react";
 import { SignOutButton } from "@/components/layout/SignOutButton";
 import { TopbarSearch } from "@/components/layout/TopbarSearch";
 import { PageTitleProvider, usePageTitle } from "@/components/layout/PageTitleContext";
@@ -155,6 +155,83 @@ function IconBuilding({ active }: { active: boolean }) {
   );
 }
 
+function SubLinkMenu({ deptId, deptSlug, linkType }: { deptId: string; deptSlug: string; linkType: string }) {
+  const [open, setOpen] = useState(false);
+  const router = useRouter();
+
+  const getHref = () => {
+    switch (linkType) {
+      case "Übersicht":
+        return `/d/${deptSlug}`;
+      case "OKRs":
+        return `/d/${deptSlug}/okrs/table`;
+      case "Aufgaben":
+        return `/d/${deptSlug}/tasks`;
+      default:
+        return `/d/${deptSlug}`;
+    }
+  };
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          setOpen(!open);
+        }}
+        className="flex h-5 w-5 items-center justify-center rounded text-[var(--sidebar-muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--sidebar-ink)]"
+        title="Optionen"
+      >
+        <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="5" r="1.5" fill="currentColor" />
+          <circle cx="12" cy="12" r="1.5" fill="currentColor" />
+          <circle cx="12" cy="19" r="1.5" fill="currentColor" />
+        </svg>
+      </button>
+      {open ? (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-6 z-50 w-[180px] rounded-lg border border-[var(--border)] bg-[var(--card)] p-1 shadow-pop">
+            <button
+              type="button"
+              onClick={() => {
+                window.open(getHref(), "_blank");
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-[var(--ink)] transition hover:bg-[var(--hover)]"
+            >
+              <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6M15 3h6v6M10 14L21 3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              In neuem Tab öffnen
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                navigator.clipboard.writeText(window.location.origin + getHref());
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs text-[var(--ink)] transition hover:bg-[var(--hover)]"
+            >
+              <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                <rect x="9" y="9" width="13" height="13" rx="2" stroke="currentColor" strokeWidth="1.5" />
+                <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" stroke="currentColor" strokeWidth="1.5" />
+              </svg>
+              Link kopieren
+            </button>
+            <div className="my-1 h-px bg-[var(--border)]" />
+            <div className="px-2 py-1.5 text-[10px] text-[var(--muted)]">
+              System-Link (nicht editierbar)
+            </div>
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
 function DraggableBoardItem({
   board,
   slug,
@@ -184,7 +261,7 @@ function DraggableBoardItem({
   return (
     <div
       ref={setNodeRef}
-      className={`group flex items-center ${isDragging ? "dragging" : ""}`}
+      className={`group/sidebar-board flex items-center ${isDragging ? "dragging" : ""}`}
       style={{ ...style }}
     >
       <Link
@@ -211,6 +288,7 @@ function DraggableBoardItem({
         currentColor={board.color || "#579bfc"}
         onUpdate={onUpdate}
         onDelete={onDelete}
+        hoverGroup="sidebar-board"
       />
     </div>
   );
@@ -241,8 +319,8 @@ function DroppableGroup({
   });
 
   return (
-    <div ref={setNodeRef} className={`group ${isOver ? "drop-active" : ""}`}>
-      <div className="flex items-center" style={{ paddingLeft: "44px" }}>
+    <div ref={setNodeRef} className={isOver ? "drop-active" : ""}>
+      <div className="group/sidebar-folder flex items-center" style={{ paddingLeft: "44px" }}>
         <button
           type="button"
           onClick={onToggle}
@@ -277,6 +355,7 @@ function DroppableGroup({
           currentColor={group.color || "#579bfc"}
           onUpdate={onUpdate}
           onDelete={onDelete}
+          hoverGroup="sidebar-folder"
         />
       </div>
       {!collapsed ? children : null}
@@ -371,6 +450,7 @@ export function ProductShell({
   const pathname = usePathname() || "";
   const router = useRouter();
   const [collapsedDeptSlugs, setCollapsedDeptSlugs] = useState<Set<string>>(() => new Set());
+  const [collapsedBoardsDeptIds, setCollapsedBoardsDeptIds] = useState<Set<string>>(() => new Set());
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(() => new Set());
   const [createBoardForDept, setCreateBoardForDept] = useState<{ id: string; slug: string } | null>(null);
   const [createType, setCreateType] = useState<"board" | "group">("board");
@@ -379,7 +459,12 @@ export function ProductShell({
   const [createBoardError, setCreateBoardError] = useState<string | null>(null);
   const [draggingBoard, setDraggingBoard] = useState<DeptBoardNavItem | null>(null);
   const [, startDndTransition] = useTransition();
+  const [dndMounted, setDndMounted] = useState(false);
   const initial = userEmail?.trim().charAt(0).toUpperCase() || "?";
+
+  useEffect(() => {
+    setDndMounted(true);
+  }, []);
   const displayName = userEmail?.split("@")[0]?.replace(/\./g, " ") || "Angemeldet";
 
   const sensors = useSensors(
@@ -459,6 +544,15 @@ export function ProductShell({
     });
   };
 
+  const toggleBoardsCollapsed = (deptId: string) => {
+    setCollapsedBoardsDeptIds((prev) => {
+      const n = new Set(prev);
+      if (n.has(deptId)) n.delete(deptId);
+      else n.add(deptId);
+      return n;
+    });
+  };
+
   const openCreateBoardModal = (dept: { id: string; slug: string }) => {
     setCreateBoardForDept(dept);
     setCreateType("board");
@@ -521,19 +615,25 @@ export function ProductShell({
     }
   };
 
-  const deptSubLink = (slug: string, href: string, label: string) => {
-    const active = pathname === href || pathname.startsWith(`${href}/`);
+  const deptSubLink = (deptId: string, slug: string, href: string, label: string) => {
+    const active = label === "Übersicht" 
+      ? pathname === href 
+      : (pathname === href || pathname.startsWith(`${href}/`));
     return (
-      <Link
-        key={href}
-        href={href}
-        className={`hs-nav-item !py-1.5 !pl-9 !text-[12px] ${active ? "active" : ""}`}
-      >
-        <span className="ico flex h-[18px] w-[18px] items-center justify-center rounded-md bg-[var(--surface-2)] text-[var(--ink-2)]">
-          {deptSubLinkIcon(label, active)}
-        </span>
-        <span className="hs-nav-label">{label}</span>
-      </Link>
+      <div key={href} className="group/sublink relative flex items-center">
+        <Link
+          href={href}
+          className={`hs-nav-item flex-1 !py-1.5 !pl-9 !pr-8 !text-[12px] ${active ? "active" : ""}`}
+        >
+          <span className="ico flex h-[18px] w-[18px] items-center justify-center rounded-md bg-[var(--surface-2)] text-[var(--ink-2)]">
+            {deptSubLinkIcon(label, active)}
+          </span>
+          <span className="hs-nav-label">{label}</span>
+        </Link>
+        <div className="absolute right-1 opacity-0 transition-opacity group-hover/sublink:opacity-100">
+          <SubLinkMenu deptId={deptId} deptSlug={slug} linkType={label} />
+        </div>
+      </div>
     );
   };
 
@@ -634,13 +734,18 @@ export function ProductShell({
       <div className="hs-app grid min-h-screen grid-cols-[248px_minmax(0,1fr)] bg-[var(--bg)]">
         <aside className="hs-side w-[248px] max-w-[248px] shrink-0">
         <div className="flex flex-col border-b border-[var(--border)]/40">
-          <div className="flex items-center gap-3 px-[18px] pt-[18px]">
+          <div className="flex flex-col items-center px-[18px] pt-[16px]">
             <Link href="/dashboard" title="HalloSkills">
-              <img src="/logo.png" alt="HalloSkills" className="h-10 w-auto" />
+              <img 
+                src="/logo.png" 
+                alt="HalloSkills" 
+                className="h-8 w-auto" 
+                style={{ background: "transparent" }}
+              />
             </Link>
-            <div className="hs-brand min-w-0">
-              <span className="b2">Taskmanagement</span>
-            </div>
+            <span className="mt-1 text-[11px] font-semibold tracking-wide text-[var(--sidebar-muted)]">
+              Taskmanagement
+            </span>
           </div>
           <div className="px-[10px] pb-3 pt-2">
             <Suspense
@@ -677,6 +782,7 @@ export function ProductShell({
           </nav>
 
           <div className="hs-side-section">Abteilungen</div>
+          {dndMounted ? (
           <DndContext
             sensors={sensors}
             onDragStart={handleDragStart}
@@ -688,6 +794,7 @@ export function ProductShell({
                   const inDept = pathname.startsWith(base);
                   const boards = d.id ? departmentBoardsByDeptId[d.id] ?? [] : [];
                   const deptCollapsed = collapsedDeptSlugs.has(d.slug);
+                  const boardsSectionCollapsed = d.id ? collapsedBoardsDeptIds.has(d.id) : false;
 
                   const handleDeptUpdate = async (data: { name?: string; icon?: string; color?: string }) => {
                     if (!d.id) return { ok: false, message: "Keine ID" };
@@ -704,8 +811,8 @@ export function ProductShell({
                   };
 
                   return (
-                    <div key={d.slug} className="group mb-1">
-                      <div className="flex items-center px-3">
+                    <div key={d.slug} className="mb-1">
+                      <div className="group/sidebar-dept flex items-center px-3">
                         <button
                           type="button"
                           onClick={() => toggleDeptCollapsed(d.slug)}
@@ -747,22 +854,54 @@ export function ProductShell({
                             currentColor={d.color || "#579bfc"}
                             onUpdate={handleDeptUpdate}
                             onDelete={handleDeptDelete}
+                            hoverGroup="sidebar-dept"
                           />
                         ) : null}
                       </div>
                       {deptCollapsed ? null : (
                       <div className="flex flex-col gap-px">
-                        {deptSubLink(d.slug, base, "Übersicht")}
-                        {deptSubLink(d.slug, `${base}/okrs/table`, "OKRs")}
-                        {deptSubLink(d.slug, `${base}/tasks`, "Aufgaben")}
+                        {deptSubLink(d.id, d.slug, base, "Übersicht")}
+                        {deptSubLink(d.id, d.slug, `${base}/okrs/table`, "OKRs")}
+                        {deptSubLink(d.id, d.slug, `${base}/tasks`, "Aufgaben")}
                         <div
-                          className={`flex items-center justify-between px-3 py-1.5 pl-9 ${
+                          className={`flex items-center gap-1.5 py-1.5 pr-3 pl-9 ${
                             inDept ? "text-[var(--sidebar-active-ink)]/80" : "text-[var(--sidebar-muted)]"
                           }`}
                         >
-                          <span className="text-[10px] font-extrabold uppercase tracking-wide">
-                            Boards
-                          </span>
+                          {d.id ? (
+                            <button
+                              type="button"
+                              onClick={() => toggleBoardsCollapsed(d.id)}
+                              aria-expanded={!boardsSectionCollapsed}
+                              className={`flex min-w-0 flex-1 cursor-pointer appearance-none items-center gap-1.5 border-0 bg-transparent py-0 text-left shadow-none outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-[var(--accent)] ${
+                                inDept ? "text-[var(--sidebar-active-ink)]/80" : "text-[var(--sidebar-muted)]"
+                              }`}
+                            >
+                              <svg
+                                width={14}
+                                height={14}
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                className={`shrink-0 transition-transform ${boardsSectionCollapsed ? "" : "rotate-90"}`}
+                                aria-hidden
+                              >
+                                <path
+                                  d="M9 6l6 6-6 6"
+                                  stroke="currentColor"
+                                  strokeWidth="1.8"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                />
+                              </svg>
+                              <span className="text-[10px] font-extrabold uppercase tracking-wide">
+                                Boards
+                              </span>
+                            </button>
+                          ) : (
+                            <span className="text-[10px] font-extrabold uppercase tracking-wide">
+                              Boards
+                            </span>
+                          )}
                           {d.id ? (
                             <button
                               type="button"
@@ -770,7 +909,7 @@ export function ProductShell({
                                 e.stopPropagation();
                                 openCreateBoardModal({ id: d.id, slug: d.slug });
                               }}
-                              className="flex h-[18px] w-[18px] items-center justify-center rounded-md bg-transparent text-[var(--sidebar-muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--sidebar-ink)]"
+                              className="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md bg-transparent text-[var(--sidebar-muted)] transition-colors hover:bg-[var(--hover)] hover:text-[var(--sidebar-ink)]"
                               title="Neues Board erstellen"
                               aria-label="Neues Board erstellen"
                             >
@@ -785,7 +924,7 @@ export function ProductShell({
                             </button>
                           ) : null}
                         </div>
-                        {d.id ? renderBoardsWithGroups(d.slug, boards, d.id) : null}
+                        {d.id && !boardsSectionCollapsed ? renderBoardsWithGroups(d.slug, boards, d.id) : null}
                       </div>
                       )}
                     </div>
@@ -803,6 +942,17 @@ export function ProductShell({
               ) : null}
             </DragOverlay>
           </DndContext>
+          ) : (
+            <div className="hs-side-groups pb-2">
+              {orderedDepartments.map((d) => (
+                <div key={d.slug} className="group mb-1">
+                  <div className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wide text-[var(--sidebar-muted)]">
+                    {d.name}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="hs-side-foot mt-auto shrink-0 border-t border-[var(--border)]/40 pt-2">

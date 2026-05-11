@@ -18,7 +18,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
     const { data: deptRows, error: deptErr } = await supabase
       .from("departments")
-      .select("id,name,slug,icon,color")
+      .select("*")
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
     if (!deptErr && deptRows) {
@@ -26,14 +26,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         id: r.id,
         name: r.name,
         slug: r.slug,
-        icon: r.icon,
-        color: r.color,
+        icon: r.icon ?? undefined,
+        color: r.color ?? undefined,
       }));
     }
 
     const { data: boardRows, error: boardErr } = await supabase
       .from("department_boards")
-      .select("id,name,department_id,is_group,parent_id,icon,color")
+      .select("*")
       .order("sort_order", { ascending: true })
       .order("name", { ascending: true });
     if (!boardErr && boardRows) {
@@ -54,8 +54,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           name: row.name,
           isGroup: row.is_group ?? false,
           parentId: row.parent_id ?? null,
-          icon: row.icon,
-          color: row.color,
+          icon: row.icon ?? undefined,
+          color: row.color ?? undefined,
         });
       }
       departmentBoardsByDeptId = byDept;

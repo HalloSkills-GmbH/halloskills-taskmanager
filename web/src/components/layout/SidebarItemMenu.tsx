@@ -142,6 +142,9 @@ export function SidebarIcon({ icon, className = "" }: { icon: string; className?
   }
 }
 
+/** Benannte Tailwind-Gruppe, damit `group-hover` bei verschachtelten Zeilen nur die jeweilige Zeile trifft. */
+type SidebarMenuHoverGroup = "sidebar-dept" | "sidebar-folder" | "sidebar-board";
+
 type SidebarItemMenuProps = {
   itemId: string;
   itemType: "department" | "board" | "group";
@@ -154,6 +157,8 @@ type SidebarItemMenuProps = {
   onMoveDown?: () => void;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
+  /** Wenn gesetzt, nur bei Hover über die gleichnamige `group/…`-Zeile einblenden (wichtig für Board-Zeilen in Ordnern). */
+  hoverGroup?: SidebarMenuHoverGroup;
 };
 
 export function SidebarItemMenu({
@@ -168,6 +173,7 @@ export function SidebarItemMenu({
   onMoveDown,
   canMoveUp = true,
   canMoveDown = true,
+  hoverGroup,
 }: SidebarItemMenuProps) {
   const [open, setOpen] = useState(false);
   const [subMenu, setSubMenu] = useState<"rename" | "icon" | "color" | null>(null);
@@ -231,6 +237,15 @@ export function SidebarItemMenu({
 
   const typeLabel = itemType === "department" ? "Abteilung" : itemType === "board" ? "Board" : "Gruppe";
 
+  const triggerHoverClasses =
+    hoverGroup === "sidebar-dept"
+      ? "opacity-0 transition group-hover/sidebar-dept:opacity-100"
+      : hoverGroup === "sidebar-folder"
+        ? "opacity-0 transition group-hover/sidebar-folder:opacity-100"
+        : hoverGroup === "sidebar-board"
+          ? "opacity-0 transition group-hover/sidebar-board:opacity-100"
+          : "opacity-0 transition group-hover:opacity-100";
+
   return (
     <div ref={menuRef} className="relative">
       <button
@@ -240,7 +255,7 @@ export function SidebarItemMenu({
           e.stopPropagation();
           setOpen(!open);
         }}
-        className="flex h-5 w-5 items-center justify-center rounded opacity-0 transition group-hover:opacity-100 hover:bg-[var(--hover)]"
+        className={`flex h-5 w-5 shrink-0 items-center justify-center rounded hover:bg-[var(--hover)] ${triggerHoverClasses}`}
         aria-label="Menü"
       >
         <svg width={14} height={14} viewBox="0 0 24 24" fill="none">

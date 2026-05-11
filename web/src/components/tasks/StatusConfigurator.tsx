@@ -1,12 +1,7 @@
 "use client";
 
 import { useCallback, useState, useTransition } from "react";
-import {
-  saveBoardColumnConfig,
-  addStatusOption,
-  updateStatusOption,
-  deleteStatusOption,
-} from "@/lib/board-config/actions";
+import { saveBoardColumnConfig } from "@/lib/board-config/actions";
 import type { StatusOption } from "@/types/profiles";
 
 const DEFAULT_STATUSES: StatusOption[] = [

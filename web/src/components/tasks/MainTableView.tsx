@@ -37,7 +37,7 @@ import {
   saveExpandedIds,
   type TaskTreeNode,
 } from "@/lib/tasks/tree";
-import { statusVisual, topicAccent } from "@/lib/ui/task-status-visual";
+import { statusVisual, statusVisualFromPalette, topicAccent } from "@/lib/ui/task-status-visual";
 import type { TaskCustomColumnRow } from "@/types/main-table";
 import type { TaskRow } from "@/types/tasks";
 import type { StatusOption } from "@/types/profiles";
@@ -142,6 +142,8 @@ export type MainTableViewProps = {
   initialColumnOrder?: string[] | null;
   /** Gespeicherte Gruppen-Reihenfolge (Thema/Status). */
   initialGroupSort?: { topic?: string[]; status?: string[] } | null;
+  /** Servergeladene Status-Paletten pro Spalte (`board_column_config`), wenn `statusConfigBoardId` gesetzt. */
+  initialBoardStatuses?: Record<string, StatusOption[]> | null;
 };
 
 type FlatRow = { node: TaskTreeNode; depth: number };
@@ -186,15 +188,21 @@ function StatusCell({
   value,
   onChange,
   options,
+  statusPalette,
 }: {
   value: string;
   onChange: (s: string) => void;
-  /** Wenn gesetzt (z. B. Zusatzspalte „Status“), diese Optionen statt STATUSES. */
+  /** Auswahlliste (Labels); Standard feste STATUSES. */
   options?: readonly string[];
+  /** Board-Spaltenkonfiguration: Farben pro Label (`board_column_config.statuses`). */
+  statusPalette?: StatusOption[] | null;
 }) {
   const [open, setOpen] = useState(false);
-  const vis = statusVisual(value);
-  const opts = options ?? STATUSES;
+  const vis = statusVisualFromPalette(value, statusPalette);
+  const opts =
+    options ??
+    (statusPalette?.length ? statusPalette.map((s) => s.label) : undefined) ??
+    STATUSES;
   return (
     <div className="hs-pop relative h-full min-h-[36px] w-full">
       <button
@@ -216,7 +224,7 @@ function StatusCell({
           onClick={(e) => e.stopPropagation()}
         >
           {opts.map((s) => {
-            const c = statusVisual(s);
+            const c = statusVisualFromPalette(s, statusPalette);
             return (
               <button
                 key={s}
@@ -426,6 +434,7 @@ export function MainTableView({
   defaultProjectIdForNewTasks = null,
   initialColumnOrder = null,
   initialGroupSort = null,
+  initialBoardStatuses = null,
 }: MainTableViewProps) {
   const router = useRouter();
   const storageKey = `main-${mode}-${departmentId ?? "all"}${tableStorageScopeSuffix ? `-${tableStorageScopeSuffix}` : ""}`;
@@ -462,8 +471,24 @@ export function MainTableView({
   const [editGroupName, setEditGroupName] = useState("");
   const [editGroupColor, setEditGroupColor] = useState("#00c875");
   const [statusConfigOpen, setStatusConfigOpen] = useState<string | null>(null);
-  const [boardStatuses, setBoardStatuses] = useState<Record<string, StatusOption[]>>({});
+  const [boardStatuses, setBoardStatuses] = useState<Record<string, StatusOption[]>>(() =>
+    statusConfigBoardId ? (initialBoardStatuses ?? {}) : {},
+  );
   const [maxDepthModalOpen, setMaxDepthModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (!statusConfigBoardId) {
+      setBoardStatuses({});
+      return;
+    }
+    setBoardStatuses(initialBoardStatuses ?? {});
+  }, [statusConfigBoardId, initialBoardStatuses]);
+
+  const builtinStatusLabelList = useMemo(() => {
+    const pal = boardStatuses[COL.status];
+    if (pal?.length) return pal.map((s) => s.label);
+    return [...STATUSES];
+  }, [boardStatuses]);
 
   const { widths, updateWidthImmediate, customColumns } = useMainTableSync(
     mode,
@@ -889,11 +914,11 @@ export function MainTableView({
 
   const groupAccent = useCallback(
     (key: string) => {
-      if (groupBy === "status") return statusVisual(key).color;
+      if (groupBy === "status") return statusVisualFromPalette(key, boardStatuses[COL.status]).color;
       if (groupBy === "topic") return topicAccent(key);
       return "var(--accent)";
     },
-    [groupBy],
+    [groupBy, boardStatuses],
   );
 
   const linkedTasksForObjective = useCallback(
@@ -1062,13 +1087,20 @@ export function MainTableView({
         );
       }
       if (c.col_type === "status") {
-        const stOpts = c.status_options?.length ? c.status_options : [...STATUSES];
+        const palKey = `custom:${c.col_key}`;
+        const customPal = boardStatuses[palKey];
+        const stOpts = customPal?.length
+          ? customPal.map((s) => s.label)
+          : c.status_options?.length
+            ? c.status_options
+            : [...STATUSES];
         const v = raw != null ? String(raw) : stOpts[0] ?? "";
         return (
           <div key={wk} className="hs-mcell hs-mcell-fill !p-0 min-w-0">
             <StatusCell
               value={v}
               options={stOpts}
+              statusPalette={customPal?.length ? customPal : null}
               onChange={(s) => void patchCustom(r, c.col_key, s)}
             />
           </div>
@@ -1293,7 +1325,9 @@ export function MainTableView({
         {!hiddenSet.has(COL.status) ? (
           <div className="hs-mcell hs-mcell-fill !p-0">
             <StatusCell
-              value={r.status || "Not started"}
+              value={r.status || builtinStatusLabelList[0] || "Not started"}
+              options={builtinStatusLabelList}
+              statusPalette={boardStatuses[COL.status]}
               onChange={(s) => void patch(r.id, { status: s })}
             />
           </div>

@@ -1,5 +1,7 @@
 /** Farben für Status-Zellen (Monday-Stil, angelehnt an HalloSkills-HTML-Referenz). */
 
+import type { StatusOption } from "@/types/profiles";
+
 export type StatusVisual = { color: string; soft: string; dot: string };
 
 const FALLBACK: StatusVisual = {
@@ -46,6 +48,28 @@ export function statusVisual(status: string | null | undefined): StatusVisual {
   if (key.includes("block")) return MAP.blocked;
   if (key.includes("not")) return MAP["not started"];
   return FALLBACK;
+}
+
+/**
+ * Farben aus der Board-Spaltenkonfiguration (`board_column_config`), falls das Label (oder die id) passt.
+ * Sonst Fallback über `statusVisual`.
+ */
+export function statusVisualFromPalette(
+  value: string | null | undefined,
+  palette: StatusOption[] | undefined | null,
+): StatusVisual {
+  const v = (value || "").trim();
+  if (palette && palette.length > 0 && v) {
+    const lower = v.toLowerCase();
+    const hit =
+      palette.find((s) => s.label.trim().toLowerCase() === lower) ??
+      palette.find((s) => s.id.trim().toLowerCase() === lower);
+    if (hit?.color) {
+      const color = hit.color;
+      return { color, soft: color, dot: color };
+    }
+  }
+  return statusVisual(value);
 }
 
 /** Akzentfarbe für Gruppenköpfe (Thema = Hash-Farbe). */

@@ -1,11 +1,16 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { TasksPageClient } from "@/components/tasks/TasksPageClient";
+import {
+  boardStatusesRecordFromConfigs,
+  loadAllBoardColumnConfigs,
+} from "@/lib/board-config/queries";
 import { normalizeLayoutHidden, normalizeLayoutLabels } from "@/lib/tasks/main-table-layout-shared";
 import { mergeLayoutWidths } from "@/lib/tasks/main-table-columns";
 import { fetchDepartmentBySlug } from "@/lib/supabase/department-queries";
 import { createClient } from "@/lib/supabase/server";
 import type { MainTableLayoutRow, TaskCustomColumnRow } from "@/types/main-table";
+import type { StatusOption } from "@/types/profiles";
 import type { TaskRow } from "@/types/tasks";
 
 export default async function DepartmentTasksPage({
@@ -34,6 +39,13 @@ export default async function DepartmentTasksPage({
   const customCols = (colsRes.error ? [] : colsRes.data ?? []) as TaskCustomColumnRow[];
   const layoutRow = (layoutRes.error ? null : layoutRes.data) as MainTableLayoutRow | null;
   const departmentDefaultBoardId = boardRes.error ? null : (boardRes.data?.id ?? null);
+
+  let initialBoardStatuses: Record<string, StatusOption[]> = {};
+  if (departmentDefaultBoardId) {
+    const boardConfigs = await loadAllBoardColumnConfigs(departmentDefaultBoardId);
+    initialBoardStatuses = boardStatusesRecordFromConfigs(boardConfigs);
+  }
+
   const cw = layoutRow?.column_widths;
   const storedWidths =
     cw && typeof cw === "object" && !Array.isArray(cw)
@@ -72,6 +84,7 @@ export default async function DepartmentTasksPage({
           initialColumnOrder={layoutRow?.column_order ?? null}
           initialGroupSort={layoutRow?.group_sort ?? null}
           departmentDefaultBoardId={departmentDefaultBoardId}
+          initialBoardStatuses={initialBoardStatuses}
         />
       </Suspense>
     </>

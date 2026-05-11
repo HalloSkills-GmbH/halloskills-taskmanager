@@ -7,6 +7,10 @@ import {
 } from "@/lib/tasks/main-table-layout-shared";
 import { mergeLayoutWidths } from "@/lib/tasks/main-table-columns";
 import {
+  boardStatusesRecordFromConfigs,
+  loadAllBoardColumnConfigs,
+} from "@/lib/board-config/queries";
+import {
   fetchBoardProjects,
   fetchDepartmentBoardForDept,
   fetchDepartmentBySlug,
@@ -29,6 +33,8 @@ export default async function DepartmentBoardDetailPage({
 
   const projects = await fetchBoardProjects(boardId);
   const projectIds = projects.map((p) => p.id);
+  const boardConfigs = await loadAllBoardColumnConfigs(board.id);
+  const initialBoardStatuses = boardStatusesRecordFromConfigs(boardConfigs);
 
   const supabase = await createClient();
   const [tasksRes, colsRes, layoutRes] = await Promise.all([
@@ -69,6 +75,7 @@ export default async function DepartmentBoardDetailPage({
           initialCustomColumns={customCols}
           initialMergedWidths={merged}
           layoutSyncKey={layoutSyncKey}
+          initialBoardStatuses={initialBoardStatuses}
           departmentId={dept.id}
           tasksPathPrefix={`/d/${dept.slug}/boards/${board.id}`}
           boardId={board.id}

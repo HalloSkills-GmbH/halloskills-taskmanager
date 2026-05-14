@@ -56,12 +56,13 @@ export async function updateSession(request: NextRequest) {
     },
   });
 
+  /** Session aus Cookies — kein Roundtrip zur Auth-API (`getUser` wäre langsamer). Refresh läuft über Layout/Server. */
   let user: { email?: string | null } | null = null;
   try {
-    const { data, error } = await supabase.auth.getUser();
-    if (!error && data.user) user = data.user;
+    const { data, error } = await supabase.auth.getSession();
+    if (!error && data.session?.user) user = data.session.user;
   } catch (e) {
-    console.error("[middleware] auth.getUser", e);
+    console.error("[middleware] auth.getSession", e);
   }
 
   if (!user && !skipSessionGate) {

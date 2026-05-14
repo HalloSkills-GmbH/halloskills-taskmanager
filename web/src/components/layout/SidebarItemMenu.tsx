@@ -146,7 +146,6 @@ export function SidebarIcon({ icon, className = "" }: { icon: string; className?
 type SidebarMenuHoverGroup = "sidebar-dept" | "sidebar-folder" | "sidebar-board";
 
 type SidebarItemMenuProps = {
-  itemId: string;
   itemType: "department" | "board" | "group";
   currentName: string;
   currentIcon: string;
@@ -162,7 +161,6 @@ type SidebarItemMenuProps = {
 };
 
 export function SidebarItemMenu({
-  itemId,
   itemType,
   currentName,
   currentIcon,

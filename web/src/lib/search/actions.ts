@@ -60,7 +60,7 @@ export async function globalSearch(query: string): Promise<SearchResults> {
     }
   }
 
-  let projectBoardMap = new Map<string, string>();
+  const projectBoardMap = new Map<string, string>();
   if (tasksRes.data) {
     const projectIds = [
       ...new Set(

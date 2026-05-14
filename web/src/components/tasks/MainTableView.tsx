@@ -159,23 +159,8 @@ function flattenVisible(nodes: TaskTreeNode[], expanded: Set<number>, depth = 0)
   return out;
 }
 
-function initials(s: string | null | undefined): string {
-  const t = (s || "").trim();
-  if (!t) return "?";
-  const parts = t.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0]![0]! + parts[1]![0]!).toUpperCase();
-  return t.slice(0, 2).toUpperCase();
-}
-
 function isDoneStatus(s: string | null | undefined): boolean {
   return (s || "").toLowerCase().includes("complete");
-}
-
-function formatDeShort(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const p = iso.slice(0, 10).split("-");
-  if (p.length !== 3) return iso;
-  return `${p[2]}.${p[1]}.${p[0]}`;
 }
 
 function readCustomFields(row: TaskRow): Record<string, unknown> {
@@ -671,7 +656,8 @@ export function MainTableView({
   }, []);
 
   const sortableGroupIndices = useMemo(() => groups.map((_, i) => `grp:${i}`), [groups]);
-  const groupSortEnabled = groupBy !== "none" && groups.length > 1;
+  const groupSortEnabled =
+    groupBy !== "none" && groups.length > 1 && !suppressBuiltInGroupUi;
 
   const onMainDragEnd = useCallback(
     async (event: DragEndEvent) => {

@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState, useTransition, type CSSProperties } from "react";
@@ -146,30 +147,8 @@ function IconBoard({ active }: { active: boolean }) {
   );
 }
 
-function IconBuilding({ active }: { active: boolean }) {
-  return (
-    <svg
-      width={18}
-      height={18}
-      viewBox="0 0 24 24"
-      fill="none"
-      className={active ? "opacity-100" : "opacity-80"}
-      aria-hidden
-    >
-      <path
-        d="M4 21h16M6 21V8l6-4 6 4v13M10 21v-4h4v4"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function SubLinkMenu({ deptId, deptSlug, linkType }: { deptId: string; deptSlug: string; linkType: string }) {
+function SubLinkMenu({ deptSlug, linkType }: { deptId: string; deptSlug: string; linkType: string }) {
   const [open, setOpen] = useState(false);
-  const router = useRouter();
 
   const getHref = () => {
     switch (linkType) {
@@ -297,7 +276,6 @@ function SortableBoardItem({
         <span className="hs-nav-label truncate">{board.name}</span>
       </Link>
       <SidebarItemMenu
-        itemId={board.id}
         itemType={board.isGroup ? "group" : "board"}
         currentName={board.name}
         currentIcon={board.icon || "board"}
@@ -312,8 +290,6 @@ function SortableBoardItem({
 
 function DroppableGroup({
   group,
-  slug,
-  pathname,
   collapsed,
   onToggle,
   onUpdate,
@@ -321,8 +297,6 @@ function DroppableGroup({
   children,
 }: {
   group: DeptBoardNavItem;
-  slug: string;
-  pathname: string;
   collapsed: boolean;
   onToggle: () => void;
   onUpdate: (data: { name?: string; icon?: string; color?: string }) => Promise<{ ok: boolean }>;
@@ -364,7 +338,6 @@ function DroppableGroup({
           <span className="truncate">{group.name}</span>
         </button>
         <SidebarItemMenu
-          itemId={group.id}
           itemType="group"
           currentName={group.name}
           currentIcon={group.icon || "folder"}
@@ -724,25 +697,6 @@ export function ProductShell({
     );
   };
 
-  const deptBoardLink = (slug: string, boardId: string, label: string, indent = 11) => {
-    const href = `/d/${slug}/boards/${boardId}`;
-    const active = pathname === href;
-    return (
-      <Link
-        key={href}
-        href={href}
-        className={`hs-nav-item !py-1.5 !text-[12px] ${active ? "active" : ""}`}
-        style={{ paddingLeft: `${indent * 4}px` }}
-        title={label}
-      >
-        <span className="ico flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md bg-[var(--surface-2)] text-[var(--ink-2)]">
-          <IconBoard active={active} />
-        </span>
-        <span className="hs-nav-label truncate">{label}</span>
-      </Link>
-    );
-  };
-
   const renderBoardsWithGroups = (slug: string, boards: DeptBoardNavItem[], deptId: string) => {
     const groups = boards.filter((b) => b.isGroup);
     const topLevelBoards = boards.filter((b) => !b.isGroup && !b.parentId);
@@ -776,8 +730,6 @@ export function ProductShell({
             <DroppableGroup
               key={group.id}
               group={group}
-              slug={slug}
-              pathname={pathname}
               collapsed={groupCollapsed}
               onToggle={() => toggleGroupCollapsed(group.id)}
               onUpdate={(data) => handleBoardUpdate(group.id, data)}
@@ -829,11 +781,14 @@ export function ProductShell({
         <div className="flex flex-col border-b border-[var(--border)]/40">
           <div className="flex flex-col items-center px-[18px] pt-[16px]">
             <Link href="/dashboard" title="HalloSkills">
-              <img 
-                src="/logo.png" 
-                alt="HalloSkills" 
-                className="h-8 w-auto" 
+              <Image
+                src="/logo.png"
+                alt="HalloSkills"
+                width={180}
+                height={32}
+                className="h-8 w-auto"
                 style={{ background: "transparent" }}
+                priority
               />
             </Link>
             <span className="mt-1 text-[11px] font-semibold tracking-wide text-[var(--sidebar-muted)]">
@@ -934,7 +889,6 @@ export function ProductShell({
                         </button>
                         {d.id ? (
                           <SidebarItemMenu
-                            itemId={d.id}
                             itemType="department"
                             currentName={d.name}
                             currentIcon={d.icon || "building"}

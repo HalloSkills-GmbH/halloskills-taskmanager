@@ -222,7 +222,7 @@ export function TopbarSearch({ variant = "topbar" }: { variant?: Variant }) {
                 </div>
               ) : results.total === 0 ? (
                 <div className="px-4 py-8 text-center text-[13px] text-[var(--muted)]">
-                  Keine Ergebnisse für „{value}"
+                  Keine Ergebnisse für „{value}“
                 </div>
               ) : (
                 <div className="divide-y divide-[var(--border)]">

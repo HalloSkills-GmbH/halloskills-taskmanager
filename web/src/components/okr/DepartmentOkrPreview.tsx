@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DepartmentAddObjectiveForm } from "@/components/okr/DepartmentAddObjectiveForm";
 import { fetchDepartmentOkrSnapshot } from "@/lib/okr/department-okr-snapshot";
 
 const MAX_EACH = 5;
@@ -30,6 +31,9 @@ export async function DepartmentOkrPreview({
         <p className="mt-3 text-sm text-app-muted">
           Noch keine Objectives oder Key Results mit dieser Abteilung verknüpft.
         </p>
+        <div className="mt-5 rounded-xl border border-dashed border-app-border bg-app-hover/20 p-4">
+          <DepartmentAddObjectiveForm departmentId={departmentId} compact />
+        </div>
       </section>
     );
   }

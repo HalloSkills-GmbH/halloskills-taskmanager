@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { DepartmentAddObjectiveForm } from "@/components/okr/DepartmentAddObjectiveForm";
 import { DepartmentOkrPreview } from "@/components/okr/DepartmentOkrPreview";
 import { normalizeItemKind } from "@/lib/okr/queries";
 import { fetchDepartmentBySlug } from "@/lib/supabase/department-queries";
@@ -69,6 +70,17 @@ export default async function DepartmentHubPage({
         </Link>
       </div>
 
+      <section className="mt-10 rounded-2xl border border-app-border bg-app-card p-6 shadow-card">
+        <DepartmentAddObjectiveForm departmentId={dept.id} />
+        <p className="mt-4 text-xs leading-relaxed text-app-muted">
+          Key Results und operative Aufgaben legst du in der{" "}
+          <Link href={`/d/${dept.slug}/okrs/table`} className="font-semibold text-app-brand hover:underline">
+            OKR-Tabelle
+          </Link>{" "}
+          unter einem Objective an (Zeile aufklappen oder Aktionen in der Tabelle).
+        </p>
+      </section>
+
       <DepartmentOkrPreview departmentId={dept.id} deptSlug={dept.slug} />
 
       {boards.length > 0 ? (
@@ -90,10 +102,12 @@ export default async function DepartmentHubPage({
         </section>
       ) : null}
 
-      <p className="mt-8 text-xs text-app-muted">
-        Hinweis: Weise Aufgaben und OKR-Zeilen in der Tabelle das Feld{" "}
-        <code className="rounded bg-app-hover px-1 font-mono">department_id</code> zu (über Supabase
-        oder kommende UI), damit sie hier erscheinen.
+      <p className="mt-8 text-xs leading-relaxed text-app-muted">
+        Hinweis: Objectives kannst du direkt oben anlegen. Für reine Aufgaben ohne OKR nutze{" "}
+        <Link href={`/d/${dept.slug}/tasks`} className="font-semibold text-app-brand hover:underline">
+          Aufgaben
+        </Link>
+        ; Zeilen aus der globalen Liste ohne Abteilung kannst du dort weiterhin per Abteilungsfeld zuordnen.
       </p>
     </div>
   );

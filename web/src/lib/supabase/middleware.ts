@@ -4,7 +4,21 @@ import { NextResponse, type NextRequest } from "next/server";
 export async function updateSession(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) {
+  const path = request.nextUrl.pathname;
+
+  /** Routen ohne aktive Supabase-Session bzw. ohne gültige Env (Login/Callback/Assets). */
+  const skipSessionGate =
+    path.startsWith("/login") || path.startsWith("/auth") || path.startsWith("/_next");
+
+  if (!url?.trim() || !key?.trim()) {
+    if (skipSessionGate) {
+      return NextResponse.next({ request });
+    }
+    if (path === "/") {
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = "/login";
+      return NextResponse.redirect(redirectUrl);
+    }
     return new NextResponse(
       "Konfiguration: NEXT_PUBLIC_SUPABASE_URL / NEXT_PUBLIC_SUPABASE_ANON_KEY fehlen (.env.local).",
       { status: 503 },
@@ -50,13 +64,7 @@ export async function updateSession(request: NextRequest) {
     console.error("[middleware] auth.getUser", e);
   }
 
-  const path = request.nextUrl.pathname;
-  const isAuthPath =
-    path.startsWith("/login") ||
-    path.startsWith("/auth") ||
-    path.startsWith("/_next");
-
-  if (!user && !isAuthPath) {
+  if (!user && !skipSessionGate) {
     const redirectUrl = request.nextUrl.clone();
     redirectUrl.pathname = "/login";
     return NextResponse.redirect(redirectUrl);

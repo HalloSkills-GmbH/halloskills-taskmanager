@@ -19,6 +19,16 @@ jobs:
         with:
           submodules: true
           lfs: false
+      - name: Supabase-Secrets für Build prüfen
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "${NEXT_PUBLIC_SUPABASE_URL:-}" ] || [ -z "${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}" ]; then
+            echo "::error::GitHub Actions Secrets fehlen oder sind leer: NEXT_PUBLIC_SUPABASE_URL und NEXT_PUBLIC_SUPABASE_ANON_KEY müssen unter Repository Settings → Secrets and variables → Actions gesetzt sein."
+            exit 1
+          fi
+          echo "::notice::Supabase-Secrets sind gesetzt (Inhalt wird nicht geloggt)."
       # Oryx/Deploy übergibt env-Werte nicht immer zuverlässig an `next build`.
       # Next.js lädt `.env.production` beim Production-Build → NEXT_PUBLIC_* werden eingebettet.
       - name: Supabase-Umgebung für Next-Build (CI)

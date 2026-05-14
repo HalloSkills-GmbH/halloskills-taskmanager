@@ -19,6 +19,22 @@ jobs:
         with:
           submodules: true
           lfs: false
+      # Oryx/Deploy übergibt env-Werte nicht immer zuverlässig an `next build`.
+      # Next.js lädt `.env.production` beim Production-Build → NEXT_PUBLIC_* werden eingebettet.
+      - name: Supabase-Umgebung für Next-Build (CI)
+        working-directory: web
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
+          NEXT_SERVER_ACTIONS_ENCRYPTION_KEY: ${{ secrets.NEXT_SERVER_ACTIONS_ENCRYPTION_KEY }}
+        run: |
+          set -e
+          : > .env.production
+          echo "NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}" >> .env.production
+          echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}" >> .env.production
+          if [ -n "${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY:-}" ]; then
+            echo "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=${NEXT_SERVER_ACTIONS_ENCRYPTION_KEY}" >> .env.production
+          fi
       - name: Build And Deploy
         id: builddeploy
         uses: Azure/static-web-apps-deploy@v1

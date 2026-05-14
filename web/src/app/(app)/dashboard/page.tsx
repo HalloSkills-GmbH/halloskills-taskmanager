@@ -1,10 +1,36 @@
 import Link from "next/link";
 import { CreateDepartmentForm } from "@/components/dashboard/CreateDepartmentForm";
-import { fetchDepartmentOkrSnapshot } from "@/lib/okr/department-okr-snapshot";
+import type { OkrSnapshotRow } from "@/lib/okr/department-okr-snapshot";
 import { normalizeItemKind } from "@/lib/okr/queries";
 import { createClient } from "@/lib/supabase/server";
 import type { DepartmentRow } from "@/types/departments";
 import type { TaskRow } from "@/types/tasks";
+
+type TaskDashRow = Pick<TaskRow, "id" | "item_kind" | "department_id" | "status" | "name" | "progress">;
+
+function buildOkrByDepartment(tasks: TaskDashRow[]): Map<string, { objectives: OkrSnapshotRow[]; keyResults: OkrSnapshotRow[] }> {
+  const map = new Map<string, { objectives: OkrSnapshotRow[]; keyResults: OkrSnapshotRow[] }>();
+  for (const t of tasks) {
+    const did = t.department_id;
+    if (!did) continue;
+    let bucket = map.get(did);
+    if (!bucket) {
+      bucket = { objectives: [], keyResults: [] };
+      map.set(did, bucket);
+    }
+    const kind = normalizeItemKind(t as TaskRow);
+    const row: OkrSnapshotRow = {
+      id: t.id,
+      name: t.name,
+      status: t.status,
+      progress: t.progress,
+      item_kind: t.item_kind,
+    };
+    if (kind === "objective") bucket.objectives.push(row);
+    else if (kind === "key_result") bucket.keyResults.push(row);
+  }
+  return map;
+}
 
 export default async function DashboardPage() {
   try {
@@ -29,15 +55,13 @@ async function DashboardContent() {
   const supabase = await createClient();
 
   const [tasksRes, deptRes] = await Promise.all([
-    supabase.from("tasks").select("id,item_kind,department_id,status"),
+    supabase.from("tasks").select("id,item_kind,department_id,status,name,progress"),
     supabase.from("departments").select("*").order("sort_order", { ascending: true }).order("name", { ascending: true }),
   ]);
 
-  const tasks = (tasksRes.data ?? []) as Pick<
-    TaskRow,
-    "id" | "item_kind" | "department_id" | "status"
-  >[];
+  const tasks = (tasksRes.data ?? []) as TaskDashRow[];
   const departments = (deptRes.data ?? []) as DepartmentRow[];
+  const okrByDept = buildOkrByDepartment(tasks);
 
   const objectives = tasks.filter((t) => normalizeItemKind(t as TaskRow) === "objective");
   const keyResults = tasks.filter((t) => normalizeItemKind(t as TaskRow) === "key_result");
@@ -127,52 +151,53 @@ async function DashboardContent() {
         </p>
         {departments.length === 0 ? null : (
           <ul className="mt-4 grid gap-4 lg:grid-cols-2">
-            {await Promise.all(
-              departments.map(async (d) => {
-                const { objectives, keyResults } = await fetchDepartmentOkrSnapshot(d.id);
-                return (
-                  <li
-                    key={d.id}
-                    className="rounded-2xl border border-app-border bg-app-card p-5 shadow-card"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <span className="font-bold text-app-ink">{d.name}</span>
-                      <Link
-                        href={`/d/${d.slug}/okrs/table`}
-                        className="text-xs font-bold text-app-brand hover:underline"
-                      >
-                        OKRs →
-                      </Link>
-                    </div>
-                    <p className="mt-2 text-xs font-semibold text-app-muted">
-                      {objectives.length} Objectives · {keyResults.length} Key Results
-                    </p>
-                    {objectives.length > 0 || keyResults.length > 0 ? (
-                      <ul className="mt-3 space-y-1.5 text-sm text-app-text">
-                        {objectives.slice(0, 2).map((o) => (
-                          <li key={o.id} className="truncate">
-                            <span className="font-semibold text-app-ink">O:</span> {o.name}
-                          </li>
-                        ))}
-                        {keyResults.slice(0, 2).map((kr) => (
-                          <li key={kr.id} className="truncate">
-                            <span className="font-semibold text-app-ink">KR:</span> {kr.name}
-                          </li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="mt-2 text-xs text-app-muted">Noch keine OKR-Zeilen zugeordnet.</p>
-                    )}
+            {departments.map((d) => {
+              const { objectives: deptObjectives, keyResults: deptKeyResults } = okrByDept.get(d.id) ?? {
+                objectives: [],
+                keyResults: [],
+              };
+              return (
+                <li
+                  key={d.id}
+                  className="rounded-2xl border border-app-border bg-app-card p-5 shadow-card"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <span className="font-bold text-app-ink">{d.name}</span>
                     <Link
-                      href={`/d/${d.slug}`}
-                      className="mt-3 inline-block text-xs font-bold text-app-brand hover:underline"
+                      href={`/d/${d.slug}/okrs/table`}
+                      className="text-xs font-bold text-app-brand hover:underline"
                     >
-                      Zur Abteilungsübersicht
+                      OKRs →
                     </Link>
-                  </li>
-                );
-              }),
-            )}
+                  </div>
+                  <p className="mt-2 text-xs font-semibold text-app-muted">
+                    {deptObjectives.length} Objectives · {deptKeyResults.length} Key Results
+                  </p>
+                  {deptObjectives.length > 0 || deptKeyResults.length > 0 ? (
+                    <ul className="mt-3 space-y-1.5 text-sm text-app-text">
+                      {deptObjectives.slice(0, 2).map((o) => (
+                        <li key={o.id} className="truncate">
+                          <span className="font-semibold text-app-ink">O:</span> {o.name}
+                        </li>
+                      ))}
+                      {deptKeyResults.slice(0, 2).map((kr) => (
+                        <li key={kr.id} className="truncate">
+                          <span className="font-semibold text-app-ink">KR:</span> {kr.name}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-2 text-xs text-app-muted">Noch keine OKR-Zeilen zugeordnet.</p>
+                  )}
+                  <Link
+                    href={`/d/${d.slug}`}
+                    className="mt-3 inline-block text-xs font-bold text-app-brand hover:underline"
+                  >
+                    Zur Abteilungsübersicht
+                  </Link>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

@@ -5,37 +5,44 @@ import {
 } from "@/components/layout/ProductShell";
 import { createClient } from "@/lib/supabase/server";
 
-export const dynamic = "force-dynamic";
-
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   let userEmail: string | undefined;
   let departments: DepartmentNavItem[] = [];
   let departmentBoardsByDeptId: Record<string, DeptBoardNavItem[]> = {};
   try {
     const supabase = await createClient();
-    const { data, error } = await supabase.auth.getUser();
-    if (!error && data.user?.email) userEmail = data.user.email;
+    const [userResult, deptRowsResult, boardRowsResult] = await Promise.all([
+      supabase.auth.getUser(),
+      supabase
+        .from("departments")
+        .select("*")
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true }),
+      supabase
+        .from("department_boards")
+        .select("*")
+        .order("sort_order", { ascending: true })
+        .order("name", { ascending: true }),
+    ]);
 
-    const { data: deptRows, error: deptErr } = await supabase
-      .from("departments")
-      .select("*")
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
+    if (!userResult.error && userResult.data.user?.email) userEmail = userResult.data.user.email;
+
+    const deptRows = deptRowsResult.data;
+    const deptErr = deptRowsResult.error;
     if (!deptErr && deptRows) {
-      departments = (deptRows as { id: string; name: string; slug: string; icon?: string; color?: string }[]).map((r) => ({
-        id: r.id,
-        name: r.name,
-        slug: r.slug,
-        icon: r.icon ?? undefined,
-        color: r.color ?? undefined,
-      }));
+      departments = (deptRows as { id: string; name: string; slug: string; icon?: string; color?: string }[]).map(
+        (r) => ({
+          id: r.id,
+          name: r.name,
+          slug: r.slug,
+          icon: r.icon ?? undefined,
+          color: r.color ?? undefined,
+        }),
+      );
     }
 
-    const { data: boardRows, error: boardErr } = await supabase
-      .from("department_boards")
-      .select("*")
-      .order("sort_order", { ascending: true })
-      .order("name", { ascending: true });
+    const boardRows = boardRowsResult.data;
+    const boardErr = boardRowsResult.error;
     if (!boardErr && boardRows) {
       const byDept: Record<string, DeptBoardNavItem[]> = {};
       for (const row of boardRows as {

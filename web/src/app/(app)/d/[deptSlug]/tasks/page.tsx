@@ -9,6 +9,7 @@ import { normalizeLayoutHidden, normalizeLayoutLabels } from "@/lib/tasks/main-t
 import { mergeLayoutWidths } from "@/lib/tasks/main-table-columns";
 import { fetchDepartmentBySlug } from "@/lib/supabase/department-queries";
 import { createClient } from "@/lib/supabase/server";
+import { MAIN_TABLE_TASK_SELECT } from "@/lib/tasks/task-row-select";
 import type { MainTableLayoutRow, TaskCustomColumnRow } from "@/types/main-table";
 import type { StatusOption } from "@/types/profiles";
 import type { TaskRow } from "@/types/tasks";
@@ -24,7 +25,7 @@ export default async function DepartmentTasksPage({
 
   const supabase = await createClient();
   const [tasksRes, colsRes, layoutRes, boardRes] = await Promise.all([
-    supabase.from("tasks").select("*").eq("department_id", dept.id).order("id"),
+    supabase.from("tasks").select(MAIN_TABLE_TASK_SELECT).eq("department_id", dept.id).order("id"),
     supabase.from("task_custom_columns").select("*").order("sort_order", { ascending: true }),
     supabase.from("main_table_layout").select("*").eq("view_key", "tasks").maybeSingle(),
     supabase

@@ -1,7 +1,8 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { z } from "zod";
+import { APP_SIDEBAR_NAV_TAG } from "@/lib/supabase/sidebar-nav";
 import { createClient } from "@/lib/supabase/server";
 import { slugify } from "@/lib/slug";
 import { DEFAULT_DEPARTMENT_BOARD_KANBAN_COLUMNS } from "@/lib/department-board";
@@ -15,6 +16,7 @@ const boardColumnSchema = z.array(
 );
 
 function revalidateWorkspace() {
+  revalidateTag(APP_SIDEBAR_NAV_TAG);
   revalidatePath("/dashboard");
   revalidatePath("/d", "layout");
   revalidatePath("/tasks", "layout");

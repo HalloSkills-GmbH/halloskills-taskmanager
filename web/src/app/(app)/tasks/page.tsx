@@ -3,6 +3,7 @@ import { TasksPageClient } from "@/components/tasks/TasksPageClient";
 import { normalizeLayoutHidden, normalizeLayoutLabels } from "@/lib/tasks/main-table-layout-shared";
 import { mergeLayoutWidths } from "@/lib/tasks/main-table-columns";
 import { createClient } from "@/lib/supabase/server";
+import { MAIN_TABLE_TASK_SELECT } from "@/lib/tasks/task-row-select";
 import type { MainTableLayoutRow, TaskCustomColumnRow } from "@/types/main-table";
 import type { TaskRow } from "@/types/tasks";
 
@@ -10,7 +11,7 @@ export default async function TasksPage() {
   const supabase = await createClient();
 
   const [tasksRes, colsRes, layoutRes] = await Promise.all([
-    supabase.from("tasks").select("*").order("id"),
+    supabase.from("tasks").select(MAIN_TABLE_TASK_SELECT).order("id"),
     supabase.from("task_custom_columns").select("*").order("sort_order", { ascending: true }),
     supabase.from("main_table_layout").select("*").eq("view_key", "tasks").maybeSingle(),
   ]);

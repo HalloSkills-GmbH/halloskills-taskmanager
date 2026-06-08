@@ -7,6 +7,7 @@ import {
   fetchDepartmentBySlug,
 } from "@/lib/supabase/department-queries";
 import { createClient } from "@/lib/supabase/server";
+import { MAIN_TABLE_TASK_SELECT } from "@/lib/tasks/task-row-select";
 import type { MainTableLayoutRow, TaskCustomColumnRow } from "@/types/main-table";
 import type { TaskRow } from "@/types/tasks";
 import { notFound } from "next/navigation";
@@ -27,7 +28,7 @@ export default async function DepartmentOkrsTablePage({
   const supabase = await createClient();
 
   const [tasksRes, colsRes, layoutRes] = await Promise.all([
-    supabase.from("tasks").select("*").eq("department_id", dept.id).order("id"),
+    supabase.from("tasks").select(MAIN_TABLE_TASK_SELECT).eq("department_id", dept.id).order("id"),
     supabase.from("task_custom_columns").select("*").order("sort_order", { ascending: true }),
     supabase.from("main_table_layout").select("*").eq("view_key", "okr").maybeSingle(),
   ]);

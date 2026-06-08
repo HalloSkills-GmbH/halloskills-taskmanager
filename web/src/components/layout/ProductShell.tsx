@@ -40,23 +40,9 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 
-export type DepartmentNavItem = {
-  id: string;
-  name: string;
-  slug: string;
-  icon?: string;
-  color?: string;
-};
+import type { DepartmentNavItem, DeptBoardNavItem } from "@/components/layout/navigation-types";
 
-/** Ein Abteilungs-Board oder eine Gruppe für die Sidebar. */
-export type DeptBoardNavItem = {
-  id: string;
-  name: string;
-  isGroup: boolean;
-  parentId: string | null;
-  icon?: string;
-  color?: string;
-};
+export type { DepartmentNavItem, DeptBoardNavItem };
 
 type NavItem = {
   href: string;
@@ -543,17 +529,24 @@ function TopHeader() {
   );
 }
 
-export function ProductShell({
+export function ProductMainChrome({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="hs-main flex min-h-0 min-w-0 flex-1 flex-col">
+      <TopHeader />
+      <main className="min-h-0 flex-1 overflow-auto bg-[var(--bg)]">{children}</main>
+    </div>
+  );
+}
+
+export function ProductSidebar({
   userEmail,
   departments = [],
   departmentBoardsByDeptId = {},
-  children,
 }: {
   userEmail: string | undefined;
   departments?: DepartmentNavItem[];
   /** Boards pro Abteilungs-ID (Sidebar). */
   departmentBoardsByDeptId?: Record<string, DeptBoardNavItem[]>;
-  children: React.ReactNode;
 }) {
   const pathname = usePathname() || "";
   const router = useRouter();
@@ -775,8 +768,7 @@ export function ProductShell({
   };
 
   return (
-    <PageTitleProvider>
-      <div className="hs-app grid min-h-screen grid-cols-[232px_minmax(0,1fr)] bg-[var(--bg)]">
+    <>
         <aside className="hs-side w-[232px] max-w-[232px] shrink-0">
         <div className="flex flex-col border-b border-[var(--border)]/40">
           <div className="flex flex-col items-center px-[18px] pt-[16px]">
@@ -993,12 +985,6 @@ export function ProductShell({
         </div>
       </aside>
 
-      <div className="hs-main flex min-h-0 min-w-0 flex-1 flex-col">
-        <TopHeader />
-
-        <main className="min-h-0 flex-1 overflow-auto bg-[var(--bg)]">{children}</main>
-      </div>
-
       {createBoardForDept ? (
         <div
           className="fixed inset-0 z-[70] flex items-center justify-center bg-black/40 backdrop-blur-[2px]"
@@ -1092,6 +1078,31 @@ export function ProductShell({
           </div>
         </div>
       ) : null}
+    </>
+  );
+}
+
+/** Volle Shell (Sidebar + Main) — für einfache Nutzung ohne Streaming. */
+export function ProductShell({
+  userEmail,
+  departments = [],
+  departmentBoardsByDeptId = {},
+  children,
+}: {
+  userEmail: string | undefined;
+  departments?: DepartmentNavItem[];
+  departmentBoardsByDeptId?: Record<string, DeptBoardNavItem[]>;
+  children: React.ReactNode;
+}) {
+  return (
+    <PageTitleProvider>
+      <div className="hs-app grid min-h-screen grid-cols-[232px_minmax(0,1fr)] bg-[var(--bg)]">
+        <ProductSidebar
+          userEmail={userEmail}
+          departments={departments}
+          departmentBoardsByDeptId={departmentBoardsByDeptId}
+        />
+        <ProductMainChrome>{children}</ProductMainChrome>
       </div>
     </PageTitleProvider>
   );

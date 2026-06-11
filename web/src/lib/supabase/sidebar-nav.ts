@@ -1,15 +1,15 @@
 import { unstable_cache } from "next/cache";
 import type { DepartmentNavItem, DeptBoardNavItem } from "@/components/layout/navigation-types";
 import { createClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 export const APP_SIDEBAR_NAV_TAG = "app-sidebar-nav";
 
 /** Sidebar-Navigation: schlanke Queries + pro Nutzer gecacht (RLS über Session bei Cache-Miss). */
-async function fetchSidebarNavRows(): Promise<{
+async function fetchSidebarNavRows(supabase: SupabaseClient): Promise<{
   departments: DepartmentNavItem[];
   departmentBoardsByDeptId: Record<string, DeptBoardNavItem[]>;
 }> {
-  const supabase = await createClient();
   const [deptRowsResult, boardRowsResult] = await Promise.all([
     supabase
       .from("departments")
@@ -79,9 +79,10 @@ async function fetchSidebarNavRows(): Promise<{
  * Cache-Key enthält userId, damit keine Sidebar-Daten zwischen Nutzern vermischt werden.
  * Invalidierung über {@link APP_SIDEBAR_NAV_TAG} bei Workspace-Mutationen.
  */
-export function getCachedSidebarNav(userId: string) {
+export async function getCachedSidebarNav(userId: string) {
+  const supabase = await createClient();
   return unstable_cache(
-    async () => fetchSidebarNavRows(),
+    async () => fetchSidebarNavRows(supabase),
     ["app-sidebar-nav", userId],
     { tags: [APP_SIDEBAR_NAV_TAG], revalidate: 90 },
   )();

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import ReactDOM from "react-dom";
 import type { AssigneeOption } from "@/types/profiles";
 
 function getInitials(name: string): string {
@@ -40,10 +41,23 @@ export function PersonPicker({
 }: PersonPickerProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const selected = options.find((o) => o.id === value || o.name === value);
+
+  const openDropdown = useCallback(() => {
+    if (containerRef.current) {
+      const rect = containerRef.current.getBoundingClientRect();
+      setDropdownPos({
+        top: rect.bottom + window.scrollY + 4,
+        left: rect.left + window.scrollX + rect.width / 2,
+      });
+    }
+    setOpen(true);
+  }, []);
 
   const filtered = options.filter((o) =>
     o.name.toLowerCase().includes(search.toLowerCase())
@@ -55,7 +69,10 @@ export function PersonPicker({
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        containerRef.current && !containerRef.current.contains(e.target as Node) &&
+        dropdownRef.current && !dropdownRef.current.contains(e.target as Node)
+      ) {
         setOpen(false);
         setSearch("");
       }
@@ -92,7 +109,7 @@ export function PersonPicker({
       <button
         type="button"
         disabled={disabled}
-        onClick={() => setOpen(!open)}
+        onClick={() => (open ? setOpen(false) : openDropdown())}
         className="hs-cell-person flex items-center gap-2"
         title={selected?.name || placeholder}
       >
@@ -112,9 +129,12 @@ export function PersonPicker({
         )}
       </button>
 
-      {open ? (
+      {open && dropdownPos
+        ? ReactDOM.createPortal(
         <div
-          className="absolute left-1/2 top-full z-[100] mt-2 w-[280px] -translate-x-1/2 rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-pop"
+          ref={dropdownRef}
+          className="fixed z-[9999] w-[280px] rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-pop"
+          style={{ top: dropdownPos.top, left: dropdownPos.left, transform: "translateX(-50%)" }}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="border-b border-[var(--border)] p-2">
@@ -208,7 +228,8 @@ export function PersonPicker({
               </div>
             ) : null}
           </div>
-        </div>
+        </div>,
+        document.body
       ) : null}
     </div>
   );

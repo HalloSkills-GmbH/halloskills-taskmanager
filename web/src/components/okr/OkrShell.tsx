@@ -56,7 +56,6 @@ export function OkrShell({
     () =>
       [
         { href: `${basePath}/table`, label: "Tabelle" },
-        { href: `${basePath}/kanban`, label: "Kanban" },
         { href: `${basePath}/gantt`, label: "Zeitleiste" },
         { href: `${basePath}/calendar`, label: "Kalender" },
       ] as const,

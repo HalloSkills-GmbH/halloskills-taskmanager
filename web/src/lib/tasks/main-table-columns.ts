@@ -39,7 +39,7 @@ export const MIN_WIDTH_DATE_COLUMN = 140;
 export const DEFAULT_WIDTHS_TASKS: Record<string, number> = {
   [COL.grab]: 44,
   [COL.name]: 300,
-  [COL.person]: 72,
+  [COL.person]: 100,
   [COL.link]: 140,
   [COL.topic]: 120,
   [COL.status]: 136,
@@ -51,7 +51,7 @@ export const DEFAULT_WIDTHS_TASKS: Record<string, number> = {
 
 export const DEFAULT_WIDTHS_OKR: Record<string, number> = {
   ...DEFAULT_WIDTHS_TASKS,
-  [COL.tipo]: 80,
+  [COL.tipo]: 110,
   [COL.boardProj]: 160,
   [COL.actions]: 72,
 };

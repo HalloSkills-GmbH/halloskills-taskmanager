@@ -31,15 +31,30 @@ export async function fetchUserGroups(): Promise<UserGroupRow[]> {
   return (data ?? []) as UserGroupRow[];
 }
 
+const PROFILE_COLORS: Record<string, string> = {
+  "Nina Eglinsky":    "#FFB3C6",
+  "Andrea Herbig":    "#D4ADFC",
+  "Christian Kessels":"#B3D4FF",
+  "Konrad Schröter":  "#B3EFD4",
+  "Marco Jordan":     "#FFE5B4",
+  "Svetlana Gafler":  "#B3E8FF",
+  "Info":             "#FFD6A5",
+};
+
+const HIDDEN_PROFILES = new Set(["Dastin Tot"]);
+
 export async function fetchAssigneeOptions(): Promise<AssigneeOption[]> {
   const [profiles, groups] = await Promise.all([fetchProfiles(), fetchUserGroups()]);
   const options: AssigneeOption[] = [];
-  
+
   for (const p of profiles) {
+    if (!p.display_name) continue;
+    if (HIDDEN_PROFILES.has(p.display_name)) continue;
     options.push({
       type: "profile",
       id: p.id,
       name: p.display_name,
+      color: PROFILE_COLORS[p.display_name],
       avatarUrl: p.avatar_url,
     });
   }

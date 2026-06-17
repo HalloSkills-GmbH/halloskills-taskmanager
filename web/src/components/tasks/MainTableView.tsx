@@ -34,6 +34,7 @@ import {
   collectIdsWithChildren,
   groupForestBy,
   loadExpandedIdsFromStorage,
+  quarterKeyForRow,
   saveExpandedIds,
   type TaskTreeNode,
 } from "@/lib/tasks/tree";
@@ -95,7 +96,7 @@ function subtaskButtonTitle(mode: "tasks" | "okr", parent: TaskRow): string {
   return "Unteraufgabe";
 }
 
-type GroupBy = "none" | "topic" | "status";
+type GroupBy = "none" | "topic" | "status" | "quarter";
 
 export type MainTableGroupBy = GroupBy;
 
@@ -276,6 +277,7 @@ function rowDepthFromRoot(row: TaskRow, byId: Map<number, TaskRow>): number {
 function groupKeyForRow(r: TaskRow, gb: GroupBy): string {
   if (gb === "none") return "";
   if (gb === "topic") return (r.topic || "Ohne Thema").trim() || "Ohne Thema";
+  if (gb === "quarter") return quarterKeyForRow(r);
   return (r.status || "Ohne Status").trim() || "Ohne Status";
 }
 
@@ -424,7 +426,7 @@ export function MainTableView({
   const router = useRouter();
   const storageKey = `main-${mode}-${departmentId ?? "all"}${tableStorageScopeSuffix ? `-${tableStorageScopeSuffix}` : ""}`;
   const [groupByInternal, setGroupByInternal] = useState<GroupBy>(
-    mode === "tasks" ? "topic" : "status",
+    mode === "tasks" ? "topic" : "quarter",
   );
   const groupBy = groupByProp ?? groupByInternal;
   const setGroupBy = useCallback(
@@ -771,7 +773,7 @@ export function MainTableView({
             status: parent.status || "Planned",
             progress: 0,
             notes: "",
-            assigned: parent.assigned ?? "",
+            assigned: parent.assigned ?? null,
             department_id: parent.department_id ?? departmentId ?? null,
             project_id: null,
             dependencies: [],
@@ -785,7 +787,7 @@ export function MainTableView({
         }
         if (pk === "key_result") {
           const res = await insertTaskRow({
-            name: "Neue Aufgabe (OKR)",
+            name: "Neues Deliverable",
             item_kind: "task",
             parent_id: parent.id,
             okr_objective_id: parent.okr_objective_id ?? null,
@@ -796,7 +798,7 @@ export function MainTableView({
             status: parent.status || "Planned",
             progress: 0,
             notes: "",
-            assigned: parent.assigned ?? "",
+            assigned: parent.assigned ?? null,
             department_id: parent.department_id ?? departmentId ?? null,
             project_id: null,
             dependencies: [],
@@ -853,6 +855,15 @@ export function MainTableView({
       const itemKind = mode === "okr" ? "objective" : "task";
       const topicVal = groupBy === "topic" ? groupKey : "Ops";
       const statusVal = groupBy === "status" ? groupKey : "Planned";
+      // When grouping by quarter, derive end_date from quarter label
+      const quarterEnd: string | null = (() => {
+        if (groupBy !== "quarter") return null;
+        if (groupKey.startsWith("Q1")) return `${new Date().getFullYear()}-03-31`;
+        if (groupKey.startsWith("Q2")) return `${new Date().getFullYear()}-06-30`;
+        if (groupKey.startsWith("Q3")) return `${new Date().getFullYear()}-09-30`;
+        if (groupKey.startsWith("Q4")) return `${new Date().getFullYear()}-12-31`;
+        return null;
+      })();
 
       const res = await insertTaskRow({
         name: mode === "okr" ? "Neues Objective" : "Neue Aufgabe",
@@ -861,12 +872,12 @@ export function MainTableView({
         okr_objective_id: null,
         okr_key_result_id: null,
         start_date: today,
-        end_date: end.toISOString().slice(0, 10),
+        end_date: quarterEnd ?? end.toISOString().slice(0, 10),
         topic: topicVal,
         status: statusVal,
         progress: 0,
         notes: "",
-        assigned: "",
+        assigned: null,
         department_id: departmentId ?? null,
         project_id: defaultProjectIdForNewTasks ?? null,
         dependencies: [],
@@ -902,6 +913,13 @@ export function MainTableView({
     (key: string) => {
       if (groupBy === "status") return statusVisualFromPalette(key, boardStatuses[COL.status]).color;
       if (groupBy === "topic") return topicAccent(key);
+      if (groupBy === "quarter") {
+        if (key.startsWith("Q1")) return "#7c3aed"; // Violett
+        if (key.startsWith("Q2")) return "#2563eb"; // Blau
+        if (key.startsWith("Q3")) return "#059669"; // Grün
+        if (key.startsWith("Q4")) return "#d97706"; // Orange
+        return "#6b7280";
+      }
       return "var(--accent)";
     },
     [groupBy, boardStatuses],
@@ -1011,7 +1029,7 @@ export function MainTableView({
                   className="hs-name-kr inline-flex max-w-full items-center gap-1"
                   title={linked.map((t) => t.name).join(", ")}
                 >
-                  {linked.length} Aufg.
+                  {linked.length} {linked.length === 1 ? "Deliverable" : "Deliverables"}
                 </span>
               ) : (
                 <span className="text-[var(--muted)]">—</span>
@@ -1019,20 +1037,24 @@ export function MainTableView({
             })()
           ) : kind === "objective" ? (
             (() => {
-              const linked = linkedTasksForObjective(r);
-              return linked.length ? (
-                <span
-                  className="hs-name-kr inline-flex max-w-full"
-                  title={linked.map((t) => t.name).join(", ")}
-                >
-                  {linked.length} Aufg. verknüpft
+              const krCount = keyResults.filter((k) => k.okr_objective_id === r.id).length;
+              return krCount ? (
+                <span className="hs-name-kr inline-flex max-w-full">
+                  {krCount} {krCount === 1 ? "Key Result" : "Key Results"}
                 </span>
               ) : (
                 <span className="text-[var(--muted)]">—</span>
               );
             })()
           ) : isOperationalRow(r) && r.okr_key_result_id ? (
-            <span className="text-[var(--positive)]">✓ KR #{r.okr_key_result_id}</span>
+            (() => {
+              const kr = keyResults.find((k) => k.id === r.okr_key_result_id);
+              return (
+                <span className="text-[var(--positive)] truncate" title={kr ? `KR #${kr.name}` : `KR #${r.okr_key_result_id}`}>
+                  KR #{kr ? kr.name.slice(0, 25) + (kr.name.length > 25 ? "…" : "") : r.okr_key_result_id}
+                </span>
+              );
+            })()
           ) : (
             <span className="text-[var(--muted)]">—</span>
           )}
@@ -1187,7 +1209,7 @@ export function MainTableView({
               <div className="hs-name-actions">
                 <button
                   type="button"
-                  className="hs-iconbtn"
+                  className="hs-iconbtn flex items-center gap-1 !px-2 text-[11px] font-semibold"
                   title={subtaskButtonTitle(mode, r)}
                   disabled={busy}
                   onClick={(e) => {
@@ -1195,33 +1217,35 @@ export function MainTableView({
                     void addSubtask(r);
                   }}
                 >
-                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
-                    <path
-                      d="M12 5v14M5 12h14"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                    />
+                  <svg width={11} height={11} viewBox="0 0 24 24" fill="none" className="shrink-0">
+                    <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
                   </svg>
+                  {subtaskButtonTitle(mode, r)}
                 </button>
                 <button
                   type="button"
-                  className="hs-iconbtn"
-                  title="Notizen"
+                  className="hs-iconbtn flex items-center gap-1 !px-2 text-[11px] font-semibold"
+                  title={r.notes ? r.notes.slice(0, 80) + (r.notes.length > 80 ? "…" : "") : "Notiz hinzufügen"}
                   onClick={(e) => {
                     e.stopPropagation();
                     setNotesRow(r);
                     setNotesDraft(r.notes || "");
                   }}
+                  style={r.notes ? { color: "#2563eb" } : undefined}
                 >
-                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" className="shrink-0">
                     <path
-                      d="M8 21h8a2 2 0 002-2V7l-5-5H6a2 2 0 00-2 2v16"
+                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
                       stroke="currentColor"
                       strokeWidth="1.5"
+                      strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                   </svg>
+                  Notiz
+                  {r.notes ? (
+                    <span className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-[#2563eb]" />
+                  ) : null}
                 </button>
               </div>
             </div>
@@ -1229,27 +1253,23 @@ export function MainTableView({
         ) : null}
         {mode === "okr" && !hiddenSet.has(COL.tipo) ? (
           <div className="hs-mcell">
-            <select
-              className="hs-select w-full min-w-0 !text-[12px]"
-              value={(r.item_kind || "task").toLowerCase()}
-              onChange={async (e) => {
-                await patch(r.id, {
-                  item_kind: e.target.value as (typeof ITEM_KINDS)[number],
-                });
-              }}
-            >
-              {(() => {
-                const cur = (r.item_kind || "task").toLowerCase() as (typeof ITEM_KINDS)[number];
-                const base = okrItemKindsForDepth(depth);
-                const list =
-                  !base.includes(cur) && ITEM_KINDS.includes(cur) ? [...base, cur] : base;
-                return list.map((k) => (
-                  <option key={k} value={k}>
-                    {k}
-                  </option>
-                ));
-              })()}
-            </select>
+            {(() => {
+              const kind = (r.item_kind || "task").toLowerCase();
+              const cfg =
+                kind === "objective"
+                  ? { label: "Objective", bg: "#EEF2FF", color: "#4338CA" }
+                  : kind === "key_result"
+                  ? { label: "Key Result", bg: "#ECFDF5", color: "#065F46" }
+                  : { label: "Deliverable", bg: "#FFF7ED", color: "#9A3412" };
+              return (
+                <span
+                  className="inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap"
+                  style={{ background: cfg.bg, color: cfg.color }}
+                >
+                  {cfg.label}
+                </span>
+              );
+            })()}
           </div>
         ) : null}
         {!hiddenSet.has(COL.person) ? (
@@ -1346,7 +1366,7 @@ export function MainTableView({
         ) : null}
         {!hiddenSet.has(COL.prog) ? (
           <div className="hs-mcell hs-mcell-prog">
-            <div className="hs-prog-cell group w-full">
+            {mode === "okr" && kind !== "key_result" ? null : <div className="hs-prog-cell group w-full">
               <div className="hs-prog cursor-pointer" onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
                 const pct = Math.round(((e.clientX - rect.left) / rect.width) * 100);
@@ -1369,7 +1389,7 @@ export function MainTableView({
                 }}
               />
               <span className="hs-prog-num group-hover:hidden">{prog}%</span>
-            </div>
+            </div>}
           </div>
         ) : null}
         {!hiddenSet.has(COL.attach) ? (
@@ -1560,9 +1580,20 @@ export function MainTableView({
       ) : null}
 
       {emptyMsg ? (
-        <p className="rounded-hs border border-dashed border-[var(--border-2)] bg-[var(--card)] p-10 text-center text-sm font-medium text-[var(--ink-3)] shadow-card">
-          {emptyMsg}
-        </p>
+        <div className="rounded-hs border border-dashed border-[var(--border-2)] bg-[var(--card)] p-10 text-center shadow-card">
+          <p className="text-sm font-medium text-[var(--ink-3)]">{emptyMsg}</p>
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void addTaskToGroup("Planned")}
+            className="mt-4 inline-flex items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-4 py-2 text-sm font-semibold text-[var(--ink)] transition hover:bg-[var(--hover)] disabled:opacity-50"
+          >
+            <svg width={14} height={14} viewBox="0 0 24 24" fill="none" className="shrink-0">
+              <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+            {mode === "okr" ? "Erstes Objective anlegen" : "Erste Aufgabe anlegen"}
+          </button>
+        </div>
       ) : (
         <DndContext sensors={sensors} onDragEnd={onMainDragEnd}>
         <div className="hs-mtable overflow-x-auto">
@@ -1787,6 +1818,9 @@ export function MainTableView({
               const count = flat.length;
               const done = flat.filter(({ node }) => isDoneStatus(node.row.status)).length;
               const pct = count ? Math.round((done / count) * 100) : 0;
+              const objectiveCount = mode === "okr" && groupBy === "quarter"
+                ? g.roots.filter(({ row }) => normalizeItemKind(row) === "objective").length
+                : null;
               const accent = groupAccent(g.key);
 
               return (
@@ -1838,7 +1872,9 @@ export function MainTableView({
                           {g.key}
                         </button>
                         <span className="hs-mgroup-count">
-                          {count} {count === 1 ? "Aufgabe" : "Aufgaben"}
+                          {objectiveCount !== null
+                            ? `${objectiveCount} ${objectiveCount === 1 ? "Objective" : "Objectives"}`
+                            : `${count} ${count === 1 ? "Aufgabe" : "Aufgaben"}`}
                         </span>
                         <div className="hs-mgroup-progress">
                           <span className="hs-mgroup-bar" style={{ width: `${pct}%`, background: accent }} />

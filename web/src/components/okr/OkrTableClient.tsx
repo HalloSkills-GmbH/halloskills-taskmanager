@@ -3,8 +3,12 @@
 import { useState } from "react";
 import type { OkrFilters } from "@/lib/okr/filters";
 import type { TaskCustomColumnRow } from "@/types/main-table";
+import type { AssigneeOption } from "@/types/profiles";
 import type { TaskRow } from "@/types/tasks";
 import { MainTableView } from "@/components/tasks/MainTableView";
+import { COL } from "@/lib/tasks/main-table-columns";
+
+const OKR_HIDDEN_COLUMNS = [COL.boardProj, COL.topic];
 
 type Props = {
   initialAll: TaskRow[];
@@ -16,6 +20,7 @@ type Props = {
   boardProjectOptions?: { id: string; label: string }[];
   initialColumnOrder?: string[] | null;
   initialGroupSort?: { topic?: string[]; status?: string[] } | null;
+  assigneeOptions?: AssigneeOption[];
 };
 
 export function OkrTableClient({
@@ -28,6 +33,7 @@ export function OkrTableClient({
   boardProjectOptions,
   initialColumnOrder = null,
   initialGroupSort = null,
+  assigneeOptions = [],
 }: Props) {
   const [error] = useState<string | null>(null);
 
@@ -57,6 +63,8 @@ export function OkrTableClient({
         boardProjectOptions={boardProjectOptions}
         initialColumnOrder={initialColumnOrder}
         initialGroupSort={initialGroupSort}
+        assigneeOptions={assigneeOptions}
+        hiddenColumnKeys={OKR_HIDDEN_COLUMNS}
       />
     </div>
   );

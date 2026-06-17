@@ -54,11 +54,34 @@ export default async function DashboardPage() {
 async function DashboardContent() {
   const supabase = await createClient();
 
-  const [tasksRes, deptRes] = await Promise.all([
+  const { data: userResult } = await supabase.auth.getUser();
+  const userId = userResult?.user?.id ?? null;
+
+  const now = new Date();
+  const dayOfWeek = now.getDay() === 0 ? 6 : now.getDay() - 1;
+  const weekStart = new Date(now);
+  weekStart.setDate(now.getDate() - dayOfWeek);
+  weekStart.setHours(0, 0, 0, 0);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
+
+  const [tasksRes, deptRes, profileRes, myTasksRes] = await Promise.all([
     supabase.from("tasks").select("id,item_kind,department_id,status,name,progress"),
     supabase.from("departments").select("*").order("sort_order", { ascending: true }).order("name", { ascending: true }),
+    userId ? supabase.from("profiles").select("display_name").eq("id", userId).maybeSingle() : Promise.resolve({ data: null, error: null }),
+    userId ? supabase
+      .from("tasks")
+      .select("id,name,status,end_date,department_id")
+      .eq("assigned", userId)
+      .gte("end_date", weekStart.toISOString().slice(0, 10))
+      .lte("end_date", weekEnd.toISOString().slice(0, 10))
+      .order("end_date", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
+  const displayName = (profileRes.data as { display_name: string } | null)?.display_name ?? null;
+  const myTasks = (myTasksRes.data ?? []) as { id: number; name: string; status: string; end_date: string | null }[];
   const tasks = (tasksRes.data ?? []) as TaskDashRow[];
   const departments = (deptRes.data ?? []) as DepartmentRow[];
   const okrByDept = buildOkrByDepartment(tasks);
@@ -74,11 +97,43 @@ async function DashboardContent() {
 
   return (
     <div className="mx-auto max-w-[1600px] px-8 pb-14 pt-8">
-      <h1 className="text-[1.85rem] font-bold tracking-tight text-app-ink">Dashboard</h1>
+      <h1 className="text-[1.85rem] font-bold tracking-tight text-app-ink">
+        {displayName ? `Hallo, ${displayName.split(" ")[0]} 👋` : "Dashboard"}
+      </h1>
       <p className="mt-2 max-w-3xl text-sm font-medium leading-relaxed text-app-text">
         Alle OKRs und Aufgaben auf einen Blick. Über die Seitenleiste wechselst du in Abteilungen —
         dort siehst du gefilterte Aufgaben, OKRs und eigene Boards mit konfigurierbaren Spalten.
       </p>
+
+      <section className="mt-8 rounded-2xl border border-app-border bg-app-card p-6 shadow-card">
+        <h2 className="text-base font-bold text-app-ink">Diese Woche fällig</h2>
+        {myTasks.length === 0 ? (
+          <p className="mt-3 text-sm text-app-muted">Keine Aufgaben diese Woche — alles erledigt oder nichts zugewiesen.</p>
+        ) : (
+          <ul className="mt-4 space-y-2">
+            {myTasks.map((t) => (
+              <li key={t.id} className="flex items-center justify-between gap-4 rounded-xl border border-app-border bg-[var(--surface-2,#f9fafb)] px-4 py-3">
+                <span className="flex-1 truncate text-sm font-medium text-app-ink">{t.name}</span>
+                <div className="flex shrink-0 items-center gap-3">
+                  {t.end_date ? (
+                    <span className="text-xs text-app-muted">
+                      {new Date(t.end_date).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}
+                    </span>
+                  ) : null}
+                  <span className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
+                    style={{
+                      background: t.status === "Completed" ? "#dcfce7" : t.status === "In Progress" ? "#fff3cd" : "#f3f4f6",
+                      color: t.status === "Completed" ? "#15803d" : t.status === "In Progress" ? "#92400e" : "#6b7280",
+                    }}
+                  >
+                    {t.status}
+                  </span>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {tasksRes.error ? (
         <p className="mt-6 rounded-xl border border-[#EC8580]/60 bg-[#FBC4C0]/35 px-4 py-3 text-sm font-medium text-[#8E2B27]">

@@ -16,6 +16,7 @@ import {
   fetchDepartmentBySlug,
 } from "@/lib/supabase/department-queries";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAssigneeOptions } from "@/lib/profiles/actions";
 import type { MainTableLayoutRow, TaskCustomColumnRow } from "@/types/main-table";
 import type { TaskRow } from "@/types/tasks";
 
@@ -33,7 +34,10 @@ export default async function DepartmentBoardDetailPage({
 
   const projects = await fetchBoardProjects(boardId);
   const projectIds = projects.map((p) => p.id);
-  const boardConfigs = await loadAllBoardColumnConfigs(board.id);
+  const [boardConfigs, assigneeOptions] = await Promise.all([
+    loadAllBoardColumnConfigs(board.id),
+    fetchAssigneeOptions(),
+  ]);
   const initialBoardStatuses = boardStatusesRecordFromConfigs(boardConfigs);
 
   const supabase = await createClient();
@@ -86,6 +90,7 @@ export default async function DepartmentBoardDetailPage({
           initialColumnOrder={layoutRow?.column_order ?? null}
           initialGroupSort={layoutRow?.group_sort ?? null}
           departmentDefaultBoardId={board.id}
+          assigneeOptions={assigneeOptions}
         />
       </Suspense>
     </>

@@ -13,7 +13,7 @@ import {
 } from "@/lib/tasks/filters";
 import { TASKS_PERSISTABLE_BUILTIN_KEYS } from "@/lib/tasks/main-table-columns";
 import type { TaskCustomColumnRow } from "@/types/main-table";
-import type { StatusOption } from "@/types/profiles";
+import type { AssigneeOption, StatusOption } from "@/types/profiles";
 import type { TaskRow } from "@/types/tasks";
 import type { MainTableGroupBy, MainTableTaskSort } from "./MainTableView";
 import { MainTableView } from "./MainTableView";
@@ -37,6 +37,7 @@ export function TasksPageClient({
   initialGroupSort = null,
   /** Board-Status-Paletten (Server), wenn ein Board für die Status-Konfiguration gilt. */
   initialBoardStatuses,
+  assigneeOptions = [],
 }: {
   initialTasks: TaskRow[];
   initialCustomColumns: TaskCustomColumnRow[];
@@ -65,6 +66,8 @@ export function TasksPageClient({
   initialGroupSort?: { topic?: string[]; status?: string[] } | null;
   /** Aus board_column_config (Status-Optionen pro Spalte), serverseitig geladen. */
   initialBoardStatuses?: Record<string, StatusOption[]>;
+  /** Verfügbare Personen/Gruppen für den PersonPicker. */
+  assigneeOptions?: AssigneeOption[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -215,6 +218,7 @@ export function TasksPageClient({
           initialGroupSort={initialGroupSort ?? null}
           statusConfigBoardId={boardId ?? departmentDefaultBoardId ?? null}
           initialBoardStatuses={initialBoardStatuses}
+          assigneeOptions={assigneeOptions}
         />
       </div>
     </div>

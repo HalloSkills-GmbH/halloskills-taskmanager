@@ -72,7 +72,7 @@ export function PersonPicker({
 
   const handleSelect = useCallback(
     (option: AssigneeOption) => {
-      onChange(option.name);
+      onChange(option.id);
       setOpen(false);
       setSearch("");
     },

@@ -20,12 +20,12 @@ export function LoginForm() {
       email: email.trim().toLowerCase(),
       password,
     });
-    setLoading(false);
     if (err) {
+      setLoading(false);
       setError(err.message);
       return;
     }
-    router.refresh();
+    // Keep loading=true until navigation completes
     router.replace("/dashboard");
   }
 
@@ -83,9 +83,22 @@ export function LoginForm() {
       <button
         type="submit"
         disabled={loading}
-        className="hs-btn hs-btn-primary mt-6 w-full justify-center disabled:cursor-wait disabled:opacity-60"
+        className="hs-btn hs-btn-primary mt-6 w-full justify-center disabled:cursor-wait disabled:opacity-75"
       >
-        {loading ? "Anmelden…" : "Anmelden"}
+        {loading ? (
+          <>
+            <svg
+              className="mr-2 h-4 w-4 animate-spin"
+              viewBox="0 0 24 24"
+              fill="none"
+              aria-hidden
+            >
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
+            </svg>
+            Anmelden…
+          </>
+        ) : "Anmelden"}
       </button>
       <p className="mt-6 text-center text-[11.5px] font-medium text-[var(--muted)]">
         Strategische Aufgabenplanung — sicher über HTTPS und Supabase Auth.

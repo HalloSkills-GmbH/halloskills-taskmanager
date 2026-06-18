@@ -85,8 +85,19 @@ async function DashboardContent() {
   const thisWeekStr = { start: thisWeekStart.toISOString().slice(0, 10), end: thisWeekEnd.toISOString().slice(0, 10) };
   const nextWeekStr = { start: nextWeekStart.toISOString().slice(0, 10), end: nextWeekEnd.toISOString().slice(0, 10) };
 
-  const myTasksThisWeek = allMyTasks.filter((t) => t.end_date && t.end_date >= thisWeekStr.start && t.end_date <= thisWeekStr.end);
-  const myTasksNextWeek = allMyTasks.filter((t) => t.end_date && t.end_date >= nextWeekStr.start && t.end_date <= nextWeekStr.end);
+  // Show task if it starts this week OR is due this week (avoids showing long-running tasks every week)
+  const myTasksThisWeek = allMyTasks.filter((t) => {
+    const startsThisWeek = t.start_date && t.start_date >= thisWeekStr.start && t.start_date <= thisWeekStr.end;
+    const dueThisWeek = t.end_date && t.end_date >= thisWeekStr.start && t.end_date <= thisWeekStr.end;
+    return startsThisWeek || dueThisWeek;
+  });
+  const thisWeekIds = new Set(myTasksThisWeek.map((t) => t.id));
+  const myTasksNextWeek = allMyTasks.filter((t) => {
+    if (thisWeekIds.has(t.id)) return false;
+    const startsNextWeek = t.start_date && t.start_date >= nextWeekStr.start && t.start_date <= nextWeekStr.end;
+    const dueNextWeek = t.end_date && t.end_date >= nextWeekStr.start && t.end_date <= nextWeekStr.end;
+    return startsNextWeek || dueNextWeek;
+  });
 
   return (
     <div className="mx-auto max-w-[1600px] px-8 pb-14 pt-8">

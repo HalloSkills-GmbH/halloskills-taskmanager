@@ -31,7 +31,7 @@ import {
 } from "@/lib/tasks/main-table-columns";
 import {
   buildTaskForestSubset,
-  collectIdsWithChildren,
+  // collectIdsWithChildren,
   groupForestBy,
   loadExpandedIdsFromStorage,
   quarterKeyForRow,
@@ -94,13 +94,6 @@ const STATUS_EN: Record<string, string> = Object.fromEntries(
   Object.entries(STATUS_DE).map(([en, de]) => [de, en])
 );
 
-const ITEM_KINDS = ["task", "objective", "key_result"] as const;
-
-function okrItemKindsForDepth(depth: number): (typeof ITEM_KINDS)[number][] {
-  if (depth === 0) return ["objective"];
-  if (depth === 1) return ["key_result"];
-  return ["task"];
-}
 
 function subtaskButtonTitle(mode: "tasks" | "okr", parent: TaskRow): string {
   if (mode !== "okr") return "Unteraufgabe";
@@ -928,7 +921,6 @@ export function MainTableView({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [notesRow, setNotesRow] = useState<TaskRow | null>(null);
-  const [notesDraft, setNotesDraft] = useState("");
   const [addColOpen, setAddColOpen] = useState(false);
   const [addColStep, setAddColStep] = useState<"select" | "configure">("select");
   const [newColLabel, setNewColLabel] = useState("");
@@ -1410,23 +1402,6 @@ export function MainTableView({
     [groupBy, boardStatuses],
   );
 
-  const linkedTasksForObjective = useCallback(
-    (obj: TaskRow): TaskRow[] => {
-      const krIds = allRows
-        .filter(
-          (r) => normalizeItemKind(r) === "key_result" && r.okr_objective_id === obj.id,
-        )
-        .map((r) => r.id);
-      return allRows.filter(
-        (t) =>
-          isOperationalRow(t) &&
-          t.okr_key_result_id != null &&
-          krIds.includes(t.okr_key_result_id),
-      );
-    },
-    [allRows],
-  );
-
   const submitNewColumn = async () => {
     setAddColBusy(true);
     setError(null);
@@ -1473,7 +1448,6 @@ export function MainTableView({
     const r = node.row;
     const hasKids = node.children.length > 0;
     const open = expandedIds.has(r.id);
-    const prog = Math.min(100, Math.max(0, r.progress ?? 0));
     const sub = depth > 0;
     const kind = normalizeItemKind(r);
 
@@ -1859,7 +1833,6 @@ export function MainTableView({
               onClick={(e) => {
                 e.stopPropagation();
                 setNotesRow(r);
-                setNotesDraft(r.notes || "");
               }}
               style={r.notes ? { color: "#2563eb" } : undefined}
             >

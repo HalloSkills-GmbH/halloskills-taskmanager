@@ -59,12 +59,17 @@ async function DashboardContent() {
 
   const now = new Date();
   const dayOfWeek = now.getDay() === 0 ? 6 : now.getDay() - 1;
-  const weekStart = new Date(now);
-  weekStart.setDate(now.getDate() - dayOfWeek);
-  weekStart.setHours(0, 0, 0, 0);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 6);
-  weekEnd.setHours(23, 59, 59, 999);
+  const thisWeekStart = new Date(now);
+  thisWeekStart.setDate(now.getDate() - dayOfWeek);
+  thisWeekStart.setHours(0, 0, 0, 0);
+  const thisWeekEnd = new Date(thisWeekStart);
+  thisWeekEnd.setDate(thisWeekStart.getDate() + 6);
+  thisWeekEnd.setHours(23, 59, 59, 999);
+  const nextWeekStart = new Date(thisWeekStart);
+  nextWeekStart.setDate(thisWeekStart.getDate() + 7);
+  const nextWeekEnd = new Date(nextWeekStart);
+  nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
+  nextWeekEnd.setHours(23, 59, 59, 999);
 
   const [tasksRes, deptRes, profileRes, myTasksRes] = await Promise.all([
     supabase.from("tasks").select("id,item_kind,department_id,status,name,progress"),
@@ -74,14 +79,19 @@ async function DashboardContent() {
       .from("tasks")
       .select("id,name,status,end_date,department_id")
       .eq("assigned", userId)
-      .gte("end_date", weekStart.toISOString().slice(0, 10))
-      .lte("end_date", weekEnd.toISOString().slice(0, 10))
-      .order("end_date", { ascending: true })
+      .order("end_date", { ascending: true, nullsFirst: false })
       : Promise.resolve({ data: [], error: null }),
   ]);
 
   const displayName = (profileRes.data as { display_name: string } | null)?.display_name ?? null;
-  const myTasks = (myTasksRes.data ?? []) as { id: number; name: string; status: string; end_date: string | null }[];
+  const allMyTasks = (myTasksRes.data ?? []) as { id: number; name: string; status: string | null; end_date: string | null }[];
+
+  const thisWeekStr = { start: thisWeekStart.toISOString().slice(0, 10), end: thisWeekEnd.toISOString().slice(0, 10) };
+  const nextWeekStr = { start: nextWeekStart.toISOString().slice(0, 10), end: nextWeekEnd.toISOString().slice(0, 10) };
+
+  const myTasksThisWeek = allMyTasks.filter((t) => t.end_date && t.end_date >= thisWeekStr.start && t.end_date <= thisWeekStr.end);
+  const myTasksNextWeek = allMyTasks.filter((t) => t.end_date && t.end_date >= nextWeekStr.start && t.end_date <= nextWeekStr.end);
+  const myTasksNoDueDate = allMyTasks.filter((t) => !t.end_date && t.status !== "complete" && t.status !== "Erledigt");
   const tasks = (tasksRes.data ?? []) as TaskDashRow[];
   const departments = (deptRes.data ?? []) as DepartmentRow[];
   const okrByDept = buildOkrByDepartment(tasks);
@@ -105,35 +115,20 @@ async function DashboardContent() {
         dort siehst du gefilterte Aufgaben, OKRs und eigene Boards mit konfigurierbaren Spalten.
       </p>
 
-      <section className="mt-8 rounded-2xl border border-app-border bg-app-card p-6 shadow-card">
-        <h2 className="text-base font-bold text-app-ink">Diese Woche fällig</h2>
-        {myTasks.length === 0 ? (
-          <p className="mt-3 text-sm text-app-muted">Keine Aufgaben diese Woche — alles erledigt oder nichts zugewiesen.</p>
-        ) : (
-          <ul className="mt-4 space-y-2">
-            {myTasks.map((t) => (
-              <li key={t.id} className="flex items-center justify-between gap-4 rounded-xl border border-app-border bg-[var(--surface-2,#f9fafb)] px-4 py-3">
-                <span className="flex-1 truncate text-sm font-medium text-app-ink">{t.name}</span>
-                <div className="flex shrink-0 items-center gap-3">
-                  {t.end_date ? (
-                    <span className="text-xs text-app-muted">
-                      {new Date(t.end_date).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}
-                    </span>
-                  ) : null}
-                  <span className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold"
-                    style={{
-                      background: t.status === "Completed" ? "#dcfce7" : t.status === "In Progress" ? "#fff3cd" : "#f3f4f6",
-                      color: t.status === "Completed" ? "#15803d" : t.status === "In Progress" ? "#92400e" : "#6b7280",
-                    }}
-                  >
-                    {t.status}
-                  </span>
-                </div>
-              </li>
+      <div className="mt-8 grid gap-4 lg:grid-cols-2">
+        <MyTasksSection title="Diese Woche" tasks={myTasksThisWeek} emptyText="Keine Aufgaben diese Woche fällig." />
+        <MyTasksSection title="Nächste Woche" tasks={myTasksNextWeek} emptyText="Keine Aufgaben nächste Woche fällig." />
+      </div>
+      {myTasksNoDueDate.length > 0 && (
+        <section className="mt-4 rounded-2xl border border-app-border bg-app-card p-5 shadow-card">
+          <h2 className="text-sm font-bold text-app-ink">Ohne Fälligkeitsdatum</h2>
+          <ul className="mt-3 space-y-2">
+            {myTasksNoDueDate.map((t) => (
+              <TaskRow key={t.id} task={t} />
             ))}
           </ul>
-        )}
-      </section>
+        </section>
+      )}
 
       {tasksRes.error ? (
         <p className="mt-6 rounded-xl border border-[#EC8580]/60 bg-[#FBC4C0]/35 px-4 py-3 text-sm font-medium text-[#8E2B27]">
@@ -266,6 +261,62 @@ async function DashboardContent() {
         </Link>
       </section>
     </div>
+  );
+}
+
+type MyTask = { id: number; name: string; status: string | null; end_date: string | null };
+
+const STATUS_STYLE: Record<string, { bg: string; color: string }> = {
+  complete:           { bg: "#dcfce7", color: "#15803d" },
+  in_progress:        { bg: "#fff3cd", color: "#92400e" },
+  blocked:            { bg: "#fee2e2", color: "#b91c1c" },
+  planned:            { bg: "#dbeafe", color: "#1d4ed8" },
+  not_started:        { bg: "#f3f4f6", color: "#6b7280" },
+};
+
+const STATUS_DE: Record<string, string> = {
+  not_started: "Nicht gestartet",
+  planned: "Geplant",
+  in_progress: "In Bearbeitung",
+  complete: "Erledigt",
+  blocked: "Blockiert",
+};
+
+function TaskRow({ task }: { task: MyTask }) {
+  const statusKey = task.status ?? "";
+  const statusLabel = (STATUS_DE[statusKey] ?? STATUS_DE[statusKey.toLowerCase()] ?? statusKey) || null;
+  const style = STATUS_STYLE[statusKey] ?? STATUS_STYLE[statusKey.toLowerCase()] ?? { bg: "#f3f4f6", color: "#6b7280" };
+  return (
+    <li className="flex items-center justify-between gap-4 rounded-xl border border-app-border bg-[var(--surface-2,#f9fafb)] px-4 py-3">
+      <span className="flex-1 truncate text-sm font-medium text-app-ink">{task.name}</span>
+      <div className="flex shrink-0 items-center gap-3">
+        {task.end_date ? (
+          <span className="text-xs text-app-muted">
+            {new Date(task.end_date + "T12:00:00").toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}
+          </span>
+        ) : null}
+        {statusLabel ? (
+          <span className="rounded-full px-2.5 py-0.5 text-[11px] font-semibold" style={style}>
+            {statusLabel}
+          </span>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+function MyTasksSection({ title, tasks, emptyText }: { title: string; tasks: MyTask[]; emptyText: string }) {
+  return (
+    <section className="rounded-2xl border border-app-border bg-app-card p-5 shadow-card">
+      <h2 className="text-base font-bold text-app-ink">{title}</h2>
+      {tasks.length === 0 ? (
+        <p className="mt-3 text-sm text-app-muted">{emptyText}</p>
+      ) : (
+        <ul className="mt-3 space-y-2">
+          {tasks.map((t) => <TaskRow key={t.id} task={t} />)}
+        </ul>
+      )}
+    </section>
   );
 }
 

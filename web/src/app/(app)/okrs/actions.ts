@@ -36,10 +36,88 @@ export async function updateTaskFields(
   }
 
   const supabase = await createClient();
+
+  // Load current task state before update (for notification comparison)
+  const { data: currentTask } = await supabase
+    .from("tasks")
+    .select("assigned, notes, name")
+    .eq("id", id)
+    .maybeSingle();
+
   const { error } = await supabase.from("tasks").update(patch).eq("id", id);
   if (error) {
     return { ok: false, message: error.message };
   }
+
+  // Create notifications (fire-and-forget, don't fail the update if this errors)
+  try {
+    const { data: actorData } = await supabase.auth.getUser();
+    const actorId = actorData?.user?.id ?? null;
+    const actorName = actorData?.user?.email?.split("@")[0] ?? null;
+
+    const notifications: {
+      user_id: string;
+      task_id: number;
+      actor_id: string | null;
+      actor_name: string | null;
+      type: string;
+      message: string;
+    }[] = [];
+
+    // Notification: task assigned to someone new
+    if (patch.assigned && typeof patch.assigned === "string" && patch.assigned !== currentTask?.assigned) {
+      notifications.push({
+        user_id: patch.assigned,
+        task_id: id,
+        actor_id: actorId,
+        actor_name: actorName,
+        type: "assigned",
+        message: `Du wurdest der Aufgabe „${currentTask?.name ?? ""}" zugewiesen.`,
+      });
+    }
+
+    // Notification: note added on a task assigned to someone else
+    if (
+      patch.notes !== undefined &&
+      currentTask?.assigned &&
+      currentTask.assigned !== actorId &&
+      patch.notes !== currentTask.notes
+    ) {
+      notifications.push({
+        user_id: currentTask.assigned,
+        task_id: id,
+        actor_id: actorId,
+        actor_name: actorName,
+        type: "note_added",
+        message: `${actorName ?? "Jemand"} hat eine Notiz zu „${currentTask?.name ?? ""}" hinzugefügt.`,
+      });
+    }
+
+    // Notification: task fields changed (status, dates) for the assignee
+    const watchedFields = ["status", "start_date", "end_date", "progress"];
+    const hasWatchedChange = watchedFields.some((f) => patch[f] !== undefined);
+    if (
+      hasWatchedChange &&
+      currentTask?.assigned &&
+      currentTask.assigned !== actorId
+    ) {
+      notifications.push({
+        user_id: currentTask.assigned,
+        task_id: id,
+        actor_id: actorId,
+        actor_name: actorName,
+        type: "task_changed",
+        message: `${actorName ?? "Jemand"} hat Änderungen an „${currentTask?.name ?? ""}" vorgenommen.`,
+      });
+    }
+
+    if (notifications.length > 0) {
+      await supabase.from("task_notifications").insert(notifications);
+    }
+  } catch {
+    // Notification errors must not break the update
+  }
+
   revalidateOkr();
   return { ok: true };
 }

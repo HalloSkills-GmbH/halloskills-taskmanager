@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { CreateDepartmentForm } from "@/components/dashboard/CreateDepartmentForm";
 import { DashboardWeekSection } from "@/components/dashboard/DashboardWeekSection";
+import { NotificationsPanel } from "@/components/dashboard/NotificationsPanel";
+import type { TaskNotification } from "@/components/dashboard/NotificationsPanel";
 import { fetchAssigneeOptions } from "@/lib/profiles/actions";
 import type { OkrSnapshotRow } from "@/lib/okr/department-okr-snapshot";
 import { normalizeItemKind } from "@/lib/okr/queries";
@@ -45,7 +47,7 @@ export default async function DashboardPage() {
     const msg = e instanceof Error ? e.message : String(e);
     return (
       <div className="mx-auto max-w-[720px] px-8 py-14">
-        <h1 className="text-[1.5rem] font-bold tracking-tight text-app-ink">Dashboard nicht erreichbar</h1>
+        <h1 className="text-[1.5rem] font-bold tracking-tight text-app-ink">Mein Tag nicht erreichbar</h1>
         <p className="mt-3 text-sm leading-relaxed text-app-text">
           {process.env.NODE_ENV === "development"
             ? msg
@@ -76,7 +78,7 @@ async function DashboardContent() {
   nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
   nextWeekEnd.setHours(23, 59, 59, 999);
 
-  const [tasksRes, deptRes, profileRes, myTasksRes, colsRes, layoutRes, assigneeOptions] = await Promise.all([
+  const [tasksRes, deptRes, profileRes, myTasksRes, colsRes, layoutRes, assigneeOptions, notificationsRes] = await Promise.all([
     supabase.from("tasks").select("id,item_kind,department_id,status,name,progress"),
     supabase.from("departments").select("*").order("sort_order", { ascending: true }).order("name", { ascending: true }),
     userId ? supabase.from("profiles").select("display_name").eq("id", userId).maybeSingle() : Promise.resolve({ data: null, error: null }),
@@ -89,9 +91,17 @@ async function DashboardContent() {
     supabase.from("task_custom_columns").select("*").order("sort_order", { ascending: true }),
     supabase.from("main_table_layout").select("*").eq("view_key", "tasks").maybeSingle(),
     fetchAssigneeOptions(),
+    userId ? supabase
+      .from("task_notifications")
+      .select("id,type,message,actor_name,task_id,read_at,created_at")
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false })
+      .limit(30)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   const displayName = (profileRes.data as { display_name: string } | null)?.display_name ?? null;
+  const notifications = (notificationsRes.data ?? []) as TaskNotification[];
   const departments = (deptRes.data ?? []) as DepartmentRow[];
   const allMyTasks = (myTasksRes.data ?? []) as TaskRow[];
   const customCols = (colsRes.data ?? []) as TaskCustomColumnRow[];
@@ -123,7 +133,7 @@ async function DashboardContent() {
   return (
     <div className="mx-auto max-w-[1600px] px-8 pb-14 pt-8">
       <h1 className="text-[1.85rem] font-bold tracking-tight text-app-ink">
-        {displayName ? `Hallo, ${displayName.split(" ")[0]} 👋` : "Dashboard"}
+        {displayName ? `Hallo, ${displayName.split(" ")[0]} 👋` : "Mein Tag"}
       </h1>
       <p className="mt-2 max-w-3xl text-sm font-medium leading-relaxed text-app-text">
         Alle OKRs und Aufgaben auf einen Blick. Über die Seitenleiste wechselst du in Abteilungen —
@@ -153,6 +163,8 @@ async function DashboardContent() {
           collapsible
         />
       </div>
+
+      <NotificationsPanel notifications={notifications} />
 
       {tasksRes.error ? (
         <p className="mt-6 rounded-xl border border-[#EC8580]/60 bg-[#FBC4C0]/35 px-4 py-3 text-sm font-medium text-[#8E2B27]">

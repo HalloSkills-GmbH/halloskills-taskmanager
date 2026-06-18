@@ -357,7 +357,7 @@ function DroppableRoot({ children, deptId }: { children: React.ReactNode; deptId
 const overviewNav: NavItem[] = [
   {
     href: "/dashboard",
-    label: "Dashboard",
+    label: "Mein Tag",
     match: (p) => p === "/dashboard",
   },
   {

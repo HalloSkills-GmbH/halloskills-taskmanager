@@ -93,7 +93,7 @@ async function DashboardContent() {
     fetchAssigneeOptions(),
     userId ? supabase
       .from("task_notifications")
-      .select("id,type,message,actor_name,task_id,read_at,created_at")
+      .select("id,type,message,actor_name,task_id,read_at,created_at,tasks(department_id,item_kind)")
       .eq("user_id", userId)
       .order("created_at", { ascending: false })
       .limit(30)
@@ -101,8 +101,13 @@ async function DashboardContent() {
   ]);
 
   const displayName = (profileRes.data as { display_name: string } | null)?.display_name ?? null;
-  const notifications = (notificationsRes.data ?? []) as TaskNotification[];
   const departments = (deptRes.data ?? []) as DepartmentRow[];
+  const deptSlugById = new Map(departments.map((d) => [d.id, d.slug]));
+  const rawNotifications = (notificationsRes.data ?? []) as (Omit<TaskNotification, "dept_slug"> & { tasks?: { department_id?: string | null; item_kind?: string | null } | null })[];
+  const notifications: TaskNotification[] = rawNotifications.map((n) => ({
+    ...n,
+    dept_slug: n.tasks?.department_id ? (deptSlugById.get(n.tasks.department_id) ?? null) : null,
+  }));
   const allMyTasks = (myTasksRes.data ?? []) as TaskRow[];
   const customCols = (colsRes.data ?? []) as TaskCustomColumnRow[];
   const layoutRow = layoutRes.data as MainTableLayoutRow | null;

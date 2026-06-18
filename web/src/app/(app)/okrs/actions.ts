@@ -53,7 +53,11 @@ export async function updateTaskFields(
   try {
     const { data: actorData } = await supabase.auth.getUser();
     const actorId = actorData?.user?.id ?? null;
-    const actorName = actorData?.user?.email?.split("@")[0] ?? null;
+    let actorName: string | null = actorData?.user?.email?.split("@")[0] ?? null;
+    if (actorId) {
+      const { data: profile } = await supabase.from("profiles").select("display_name").eq("id", actorId).maybeSingle();
+      if (profile?.display_name) actorName = (profile.display_name as string).split(" ")[0];
+    }
 
     const notifications: {
       user_id: string;

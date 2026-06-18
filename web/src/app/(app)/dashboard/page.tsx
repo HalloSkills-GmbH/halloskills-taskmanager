@@ -1,10 +1,14 @@
 import Link from "next/link";
 import { CreateDepartmentForm } from "@/components/dashboard/CreateDepartmentForm";
-import { DashboardWeekTable } from "@/components/dashboard/DashboardWeekTable";
+import { DashboardWeekSection } from "@/components/dashboard/DashboardWeekSection";
+import { fetchAssigneeOptions } from "@/lib/profiles/actions";
 import type { OkrSnapshotRow } from "@/lib/okr/department-okr-snapshot";
 import { normalizeItemKind } from "@/lib/okr/queries";
+import { mergeLayoutWidths } from "@/lib/tasks/main-table-columns";
+import { MAIN_TABLE_TASK_SELECT } from "@/lib/tasks/task-row-select";
 import { createClient } from "@/lib/supabase/server";
 import type { DepartmentRow } from "@/types/departments";
+import type { MainTableLayoutRow, TaskCustomColumnRow } from "@/types/main-table";
 import type { TaskRow } from "@/types/tasks";
 
 type TaskDashRow = Pick<TaskRow, "id" | "item_kind" | "department_id" | "status" | "name" | "progress">;
@@ -72,34 +76,38 @@ async function DashboardContent() {
   nextWeekEnd.setDate(nextWeekStart.getDate() + 6);
   nextWeekEnd.setHours(23, 59, 59, 999);
 
-  const [tasksRes, deptRes, profileRes, myTasksRes] = await Promise.all([
+  const [tasksRes, deptRes, profileRes, myTasksRes, colsRes, layoutRes, assigneeOptions] = await Promise.all([
     supabase.from("tasks").select("id,item_kind,department_id,status,name,progress"),
     supabase.from("departments").select("*").order("sort_order", { ascending: true }).order("name", { ascending: true }),
     userId ? supabase.from("profiles").select("display_name").eq("id", userId).maybeSingle() : Promise.resolve({ data: null, error: null }),
     userId ? supabase
       .from("tasks")
-      .select("id,name,status,end_date,department_id,item_kind")
+      .select(MAIN_TABLE_TASK_SELECT)
       .eq("assigned", userId)
       .order("end_date", { ascending: true, nullsFirst: false })
       : Promise.resolve({ data: [], error: null }),
+    supabase.from("task_custom_columns").select("*").order("sort_order", { ascending: true }),
+    supabase.from("main_table_layout").select("*").eq("view_key", "tasks").maybeSingle(),
+    fetchAssigneeOptions(),
   ]);
 
   const displayName = (profileRes.data as { display_name: string } | null)?.display_name ?? null;
   const departments = (deptRes.data ?? []) as DepartmentRow[];
-  const deptNameById = new Map(departments.map((d) => [d.id, d.name]));
-  const allMyTasks = (myTasksRes.data ?? []) as { id: number; name: string; status: string | null; end_date: string | null; department_id: string | null; item_kind: string | null }[];
+  const allMyTasks = (myTasksRes.data ?? []) as TaskRow[];
+  const customCols = (colsRes.data ?? []) as TaskCustomColumnRow[];
+  const layoutRow = layoutRes.data as MainTableLayoutRow | null;
+  const storedWidths = layoutRow?.column_widths && typeof layoutRow.column_widths === "object" && !Array.isArray(layoutRow.column_widths)
+    ? (layoutRow.column_widths as Record<string, number>) : undefined;
+  const mergedWidths = mergeLayoutWidths("tasks", storedWidths, customCols);
+  const layoutSyncKey = `${layoutRow?.updated_at ?? "0"}:${customCols.map((c) => c.id).join(",")}`;
 
   const thisWeekStr = { start: thisWeekStart.toISOString().slice(0, 10), end: thisWeekEnd.toISOString().slice(0, 10) };
   const nextWeekStr = { start: nextWeekStart.toISOString().slice(0, 10), end: nextWeekEnd.toISOString().slice(0, 10) };
 
-  const enrichTask = (t: typeof allMyTasks[number]) => ({
-    ...t,
-    department_name: t.department_id ? (deptNameById.get(t.department_id) ?? null) : null,
-  });
+  const myTasksThisWeek = allMyTasks.filter((t) => t.end_date && t.end_date >= thisWeekStr.start && t.end_date <= thisWeekStr.end);
+  const myTasksNextWeek = allMyTasks.filter((t) => t.end_date && t.end_date >= nextWeekStr.start && t.end_date <= nextWeekStr.end);
+  const myTasksNoDueDate = allMyTasks.filter((t) => !t.end_date && t.status !== "complete");
 
-  const myTasksThisWeek = allMyTasks.filter((t) => t.end_date && t.end_date >= thisWeekStr.start && t.end_date <= thisWeekStr.end).map(enrichTask);
-  const myTasksNextWeek = allMyTasks.filter((t) => t.end_date && t.end_date >= nextWeekStr.start && t.end_date <= nextWeekStr.end).map(enrichTask);
-  const myTasksNoDueDate = allMyTasks.filter((t) => !t.end_date && t.status !== "complete" && t.status !== "Erledigt").map(enrichTask);
   const tasks = (tasksRes.data ?? []) as TaskDashRow[];
   const okrByDept = buildOkrByDepartment(tasks);
 
@@ -122,22 +130,37 @@ async function DashboardContent() {
         dort siehst du gefilterte Aufgaben, OKRs und eigene Boards mit konfigurierbaren Spalten.
       </p>
 
-      <div className="mt-8 space-y-4">
-        <DashboardWeekTable
+      <div className="mt-8 space-y-6">
+        <DashboardWeekSection
           title="Diese Woche"
-          initialTasks={myTasksThisWeek}
+          tasks={myTasksThisWeek}
+          customColumns={customCols}
+          mergedWidths={mergedWidths}
+          layoutSyncKey={layoutSyncKey}
+          assigneeOptions={assigneeOptions}
           emptyText="Keine Aufgaben diese Woche fällig."
+          storageKey="dashboard-this-week"
         />
-        <DashboardWeekTable
+        <DashboardWeekSection
           title="Nächste Woche"
-          initialTasks={myTasksNextWeek}
+          tasks={myTasksNextWeek}
+          customColumns={customCols}
+          mergedWidths={mergedWidths}
+          layoutSyncKey={layoutSyncKey}
+          assigneeOptions={assigneeOptions}
           emptyText="Keine Aufgaben nächste Woche fällig."
+          storageKey="dashboard-next-week"
         />
         {myTasksNoDueDate.length > 0 && (
-          <DashboardWeekTable
+          <DashboardWeekSection
             title="Ohne Fälligkeitsdatum"
-            initialTasks={myTasksNoDueDate}
+            tasks={myTasksNoDueDate}
+            customColumns={customCols}
+            mergedWidths={mergedWidths}
+            layoutSyncKey={layoutSyncKey}
+            assigneeOptions={assigneeOptions}
             emptyText=""
+            storageKey="dashboard-no-date"
           />
         )}
       </div>

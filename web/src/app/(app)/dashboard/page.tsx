@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { CreateDepartmentForm } from "@/components/dashboard/CreateDepartmentForm";
+import { DashboardWeekTable } from "@/components/dashboard/DashboardWeekTable";
 import type { OkrSnapshotRow } from "@/lib/okr/department-okr-snapshot";
 import { normalizeItemKind } from "@/lib/okr/queries";
 import { createClient } from "@/lib/supabase/server";
@@ -77,23 +78,29 @@ async function DashboardContent() {
     userId ? supabase.from("profiles").select("display_name").eq("id", userId).maybeSingle() : Promise.resolve({ data: null, error: null }),
     userId ? supabase
       .from("tasks")
-      .select("id,name,status,end_date,department_id")
+      .select("id,name,status,end_date,department_id,item_kind")
       .eq("assigned", userId)
       .order("end_date", { ascending: true, nullsFirst: false })
       : Promise.resolve({ data: [], error: null }),
   ]);
 
   const displayName = (profileRes.data as { display_name: string } | null)?.display_name ?? null;
-  const allMyTasks = (myTasksRes.data ?? []) as { id: number; name: string; status: string | null; end_date: string | null }[];
+  const departments = (deptRes.data ?? []) as DepartmentRow[];
+  const deptNameById = new Map(departments.map((d) => [d.id, d.name]));
+  const allMyTasks = (myTasksRes.data ?? []) as { id: number; name: string; status: string | null; end_date: string | null; department_id: string | null; item_kind: string | null }[];
 
   const thisWeekStr = { start: thisWeekStart.toISOString().slice(0, 10), end: thisWeekEnd.toISOString().slice(0, 10) };
   const nextWeekStr = { start: nextWeekStart.toISOString().slice(0, 10), end: nextWeekEnd.toISOString().slice(0, 10) };
 
-  const myTasksThisWeek = allMyTasks.filter((t) => t.end_date && t.end_date >= thisWeekStr.start && t.end_date <= thisWeekStr.end);
-  const myTasksNextWeek = allMyTasks.filter((t) => t.end_date && t.end_date >= nextWeekStr.start && t.end_date <= nextWeekStr.end);
-  const myTasksNoDueDate = allMyTasks.filter((t) => !t.end_date && t.status !== "complete" && t.status !== "Erledigt");
+  const enrichTask = (t: typeof allMyTasks[number]) => ({
+    ...t,
+    department_name: t.department_id ? (deptNameById.get(t.department_id) ?? null) : null,
+  });
+
+  const myTasksThisWeek = allMyTasks.filter((t) => t.end_date && t.end_date >= thisWeekStr.start && t.end_date <= thisWeekStr.end).map(enrichTask);
+  const myTasksNextWeek = allMyTasks.filter((t) => t.end_date && t.end_date >= nextWeekStr.start && t.end_date <= nextWeekStr.end).map(enrichTask);
+  const myTasksNoDueDate = allMyTasks.filter((t) => !t.end_date && t.status !== "complete" && t.status !== "Erledigt").map(enrichTask);
   const tasks = (tasksRes.data ?? []) as TaskDashRow[];
-  const departments = (deptRes.data ?? []) as DepartmentRow[];
   const okrByDept = buildOkrByDepartment(tasks);
 
   const objectives = tasks.filter((t) => normalizeItemKind(t as TaskRow) === "objective");
@@ -115,20 +122,25 @@ async function DashboardContent() {
         dort siehst du gefilterte Aufgaben, OKRs und eigene Boards mit konfigurierbaren Spalten.
       </p>
 
-      <div className="mt-8 grid gap-4 lg:grid-cols-2">
-        <MyTasksSection title="Diese Woche" tasks={myTasksThisWeek} emptyText="Keine Aufgaben diese Woche fällig." />
-        <MyTasksSection title="Nächste Woche" tasks={myTasksNextWeek} emptyText="Keine Aufgaben nächste Woche fällig." />
+      <div className="mt-8 space-y-4">
+        <DashboardWeekTable
+          title="Diese Woche"
+          initialTasks={myTasksThisWeek}
+          emptyText="Keine Aufgaben diese Woche fällig."
+        />
+        <DashboardWeekTable
+          title="Nächste Woche"
+          initialTasks={myTasksNextWeek}
+          emptyText="Keine Aufgaben nächste Woche fällig."
+        />
+        {myTasksNoDueDate.length > 0 && (
+          <DashboardWeekTable
+            title="Ohne Fälligkeitsdatum"
+            initialTasks={myTasksNoDueDate}
+            emptyText=""
+          />
+        )}
       </div>
-      {myTasksNoDueDate.length > 0 && (
-        <section className="mt-4 rounded-2xl border border-app-border bg-app-card p-5 shadow-card">
-          <h2 className="text-sm font-bold text-app-ink">Ohne Fälligkeitsdatum</h2>
-          <ul className="mt-3 space-y-2">
-            {myTasksNoDueDate.map((t) => (
-              <TaskRow key={t.id} task={t} />
-            ))}
-          </ul>
-        </section>
-      )}
 
       {tasksRes.error ? (
         <p className="mt-6 rounded-xl border border-[#EC8580]/60 bg-[#FBC4C0]/35 px-4 py-3 text-sm font-medium text-[#8E2B27]">

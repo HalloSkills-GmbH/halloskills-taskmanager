@@ -556,12 +556,16 @@ export function ProductSidebar({
 }) {
   const pathname = usePathname() || "";
   const router = useRouter();
-  const [collapsedDeptSlugs, setCollapsedDeptSlugs] = useState<Set<string>>(() => {
+  const [collapsedDeptSlugs, setCollapsedDeptSlugs] = useState<Set<string> | "all">(() => {
     try {
       const saved = typeof window !== "undefined" ? localStorage.getItem("hs-collapsed-depts") : null;
-      if (saved) return new Set(JSON.parse(saved) as string[]);
+      if (saved) {
+        const parsed = JSON.parse(saved) as string[];
+        // Only restore if the user explicitly opened at least one dept (non-empty array means a real preference was saved)
+        if (parsed.length > 0) return new Set(parsed);
+      }
     } catch { /* ignore */ }
-    return new Set(departments.map((d) => d.slug));
+    return "all"; // collapse everything by default, regardless of which departments are loaded
   });
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [collapsedBoardsDeptIds, setCollapsedBoardsDeptIds] = useState<Set<string>>(() => new Set(departments.map((d) => d.id).filter(Boolean) as string[]));
@@ -594,11 +598,14 @@ export function ProductSidebar({
 
   const toggleDeptCollapsed = (slug: string) => {
     setCollapsedDeptSlugs((prev) => {
-      const n = new Set(prev);
-      if (n.has(slug)) n.delete(slug);
-      else n.add(slug);
-      try { localStorage.setItem("hs-collapsed-depts", JSON.stringify([...n])); } catch { /* ignore */ }
-      return n;
+      // When toggling from "all", start with all current dept slugs collapsed except this one
+      const base = prev === "all"
+        ? new Set(orderedDepartments.map((d) => d.slug))
+        : new Set(prev);
+      if (base.has(slug)) base.delete(slug);
+      else base.add(slug);
+      try { localStorage.setItem("hs-collapsed-depts", JSON.stringify([...base])); } catch { /* ignore */ }
+      return base;
     });
   };
 
@@ -850,7 +857,7 @@ export function ProductSidebar({
               {orderedDepartments.map((d) => {
                   const base = `/d/${d.slug}`;
                   const inDept = pathname.startsWith(base);
-                  const deptCollapsed = inDept ? false : collapsedDeptSlugs.has(d.slug);
+                  const deptCollapsed = inDept ? false : (collapsedDeptSlugs === "all" || collapsedDeptSlugs.has(d.slug));
 
                   const handleDeptUpdate = async (data: { name?: string; icon?: string; color?: string }) => {
                     if (!d.id) return { ok: false, message: "Keine ID" };

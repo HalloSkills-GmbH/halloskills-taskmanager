@@ -395,7 +395,8 @@ function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
 }
 
 /** DndContext nur um die Board-Liste einer Abteilung — Abteilungsköpfe/Sublinks bleiben außerhalb (SSR + Hydration stabil). */
-function _DepartmentBoardsDnd({
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function DepartmentBoardsDnd({
   deptId,
   boards,
   children,
@@ -545,6 +546,7 @@ export function ProductMainChrome({
 export function ProductSidebar({
   userEmail,
   departments = [],
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   departmentBoardsByDeptId = {},
 }: {
   userEmail: string | undefined;
@@ -561,6 +563,7 @@ export function ProductSidebar({
     } catch { /* ignore */ }
     return new Set(departments.map((d) => d.slug));
   });
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [collapsedBoardsDeptIds, setCollapsedBoardsDeptIds] = useState<Set<string>>(() => new Set(departments.map((d) => d.id).filter(Boolean) as string[]));
   const [collapsedGroupIds, setCollapsedGroupIds] = useState<Set<string>>(() => new Set());
   const [createBoardForDept, setCreateBoardForDept] = useState<{ id: string; slug: string } | null>(null);
@@ -608,6 +611,7 @@ export function ProductSidebar({
     });
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _openCreateBoardModal = (dept: { id: string; slug: string }) => {
     setCreateBoardForDept(dept);
     setCreateType("board");
@@ -709,6 +713,7 @@ export function ProductSidebar({
     );
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _renderBoardsWithGroups = (slug: string, boards: DeptBoardNavItem[], deptId: string) => {
     const groups = boards.filter((b) => b.isGroup);
     const topLevelBoards = boards.filter((b) => !b.isGroup && !b.parentId);

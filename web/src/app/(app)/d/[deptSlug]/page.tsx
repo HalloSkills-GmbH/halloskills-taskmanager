@@ -2,7 +2,6 @@ import React from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DepartmentAddObjectiveForm } from "@/components/okr/DepartmentAddObjectiveForm";
-import { DepartmentOkrPreview } from "@/components/okr/DepartmentOkrPreview";
 import { normalizeItemKind } from "@/lib/okr/queries";
 import { fetchDepartmentBySlug } from "@/lib/supabase/department-queries";
 import { createClient } from "@/lib/supabase/server";
@@ -39,16 +38,6 @@ function StatusBadge({ status }: { status: string | null }) {
   );
 }
 
-function TaskCard({ item }: { item: OkrItem }) {
-  return (
-    <div className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-2.5 shadow-sm">
-      <p className="text-[13px] font-semibold leading-snug text-[#1a1f36]">{item.name}</p>
-      <div className="mt-1.5">
-        <StatusBadge status={item.status} />
-      </div>
-    </div>
-  );
-}
 
 const QUARTERS = ["Q2", "Q3", "Q4"] as const;
 type Quarter = (typeof QUARTERS)[number];

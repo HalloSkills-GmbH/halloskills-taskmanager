@@ -2298,7 +2298,7 @@ export function MainTableView({
                   <span
                     key={key}
                     className="group relative flex min-w-0 items-center px-2 py-1"
-                    style={{ textAlign: idx === 0 || key === COL.attach || key === COL.notes ? "center" : "left" }}
+                    style={{ textAlign: idx === 0 || (key as string) === COL.attach || (key as string) === COL.notes ? "center" : "left" }}
                   >
                     <span className="truncate">{headLabel}</span>
                     {menuButton}

@@ -46,16 +46,17 @@ export const DEFAULT_WIDTHS_TASKS: Record<string, number> = {
   [COL.status]: 136,
   [COL.start]: MIN_WIDTH_DATE_COLUMN,
   [COL.end]: MIN_WIDTH_DATE_COLUMN,
-  [COL.prog]: 100,
-  [COL.attach]: 52,
+  [COL.prog]: 80,
+  [COL.attach]: 44,
 };
 
 export const DEFAULT_WIDTHS_OKR: Record<string, number> = {
   ...DEFAULT_WIDTHS_TASKS,
-  [COL.tipo]: 110,
+  [COL.name]: 220,
+  [COL.tipo]: 90,
   [COL.boardProj]: 160,
-  [COL.notes]: 52,
-  [COL.actions]: 72,
+  [COL.notes]: 44,
+  [COL.actions]: 60,
 };
 
 export function customColWidthKey(colKey: string): string {
@@ -84,21 +85,23 @@ export function defaultWidthForCustomColType(
 
 /** Standard-Spaltenfolge (ohne gespeicherte Permutation). */
 export function defaultMainTableColumnKeys(
-  mode: "tasks" | "okr",
+  mode: "tasks" | "okr" | "deliverables",
   customColumns: TaskCustomColumnRow[],
   includeOkrBoardProject: boolean,
 ): string[] {
   const keys: string[] = [COL.grab, COL.name];
   if (mode === "okr") keys.push(COL.tipo);
-  keys.push(COL.person, COL.link);
+  if (mode === "deliverables") keys.push(COL.tipo);
+  keys.push(COL.person);
+  if (mode !== "deliverables") keys.push(COL.link);
   if (mode === "okr" && includeOkrBoardProject) keys.push(COL.boardProj);
-  keys.push(COL.topic);
+  if (mode !== "deliverables") keys.push(COL.topic);
   keys.push(COL.status, COL.start, COL.end, COL.prog, COL.attach);
-  if (mode === "okr") keys.push(COL.notes);
+  if (mode === "okr" || mode === "deliverables") keys.push(COL.notes);
   for (const c of [...customColumns].sort((a, b) => a.sort_order - b.sort_order)) {
     keys.push(customColWidthKey(c.col_key));
   }
-  if (mode === "okr") keys.push(COL.actions);
+  if (mode === "okr" || mode === "deliverables") keys.push(COL.actions);
   return keys;
 }
 
@@ -124,21 +127,26 @@ export function applyStoredColumnOrder(
 }
 
 export function mergeLayoutWidths(
-  mode: "tasks" | "okr",
+  mode: "tasks" | "okr" | "deliverables",
   stored: Record<string, number> | null | undefined,
   customColumns: TaskCustomColumnRow[],
 ): Record<string, number> {
   const base =
-    mode === "okr"
+    mode === "okr" || mode === "deliverables"
       ? { ...DEFAULT_WIDTHS_OKR }
       : { ...DEFAULT_WIDTHS_TASKS };
   if (stored) {
     for (const [k, v] of Object.entries(stored)) {
       if (typeof v === "number" && Number.isFinite(v) && v >= 32) {
-        base[k] = Math.min(800, v);
+        // icon-only columns: cap at 52 to keep them compact
+        const maxW = (k === COL.attach || k === COL.notes) ? 52 : 800;
+        base[k] = Math.min(maxW, v);
       }
     }
   }
+  // Always enforce compact widths for icon-only columns
+  base[COL.attach] = Math.min(base[COL.attach] ?? 44, 44);
+  if (base[COL.notes] != null) base[COL.notes] = Math.min(base[COL.notes], 44);
   for (const c of customColumns) {
     const wk = customColWidthKey(c.col_key);
     if (base[wk] == null) base[wk] = defaultWidthForCustomColType(c.col_type);

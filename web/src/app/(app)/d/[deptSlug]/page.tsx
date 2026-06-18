@@ -108,98 +108,105 @@ export default async function DepartmentHubPage({
   return (
     <div className="mx-auto max-w-[1600px] px-8 pb-14 pt-8">
 
-      {/* ── Quarterly OKR Kanban ── */}
-      <div className="rounded-2xl bg-[#1a1f36] px-7 py-5">
-        <h1 className="text-xl font-bold tracking-tight text-white">OKR Jahresplan 2026</h1>
-        <p className="mt-1 text-sm text-[#a0aec0]">{dept.name}</p>
-      </div>
-
-      {tasksRes.error ? (
-        <p className="mt-4 rounded-xl border border-[#EC8580]/60 bg-[#FBC4C0]/35 px-4 py-3 text-sm font-medium text-[#8E2B27]">
-          {tasksRes.error.message}
-        </p>
-      ) : null}
-
-      <div className="mt-6 overflow-x-auto">
-        <div className="grid min-w-[800px]" style={{ gridTemplateColumns: "160px repeat(3, 1fr)", gap: "0 12px" }}>
-          {/* Column headers */}
-          <div />
-          {QUARTERS.map((q) => (
-            <div key={q} className="pb-3">
-              <span className="text-sm font-bold text-[#1a1f36]">{q} 2026</span>
-            </div>
-          ))}
-
-          {/* Rows */}
-          {ROW_LABELS.map(({ key, label }, rowIdx) => (
-            <React.Fragment key={key}>
-              <div
-                key={`label-${key}`}
-                className="flex items-start pr-3"
-                style={{ paddingTop: rowIdx === 0 ? "12px" : "8px" }}
-              >
-                <span className="rounded-lg border border-[#e5e7eb] bg-white px-3 py-1.5 text-[12px] font-bold text-[#1a1f36] shadow-sm whitespace-nowrap">
-                  {label}
-                </span>
-              </div>
-              {QUARTERS.map((q) => (
-                <div
-                  key={`${key}-${q}`}
-                  className="rounded-xl p-3"
-                  style={{
-                    background: "#f5f6f8",
-                    marginTop: rowIdx === 0 ? "0" : "8px",
-                  }}
-                >
-                  {grid[q][key].length === 0 ? (
-                    <p className="text-[11px] text-[#9ca3af]">–</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {grid[q][key].map((item) => (
-                        <TaskCard key={item.id} item={item} />
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </React.Fragment>
-          ))}
+      {/* ── OKR Jahresplan ── */}
+      <section className="rounded-2xl border border-app-border bg-app-card shadow-card">
+        <div className="border-b border-app-border px-6 py-5">
+          <h1 className="text-lg font-bold tracking-tight text-app-ink">OKR Jahresplan 2026</h1>
+          <p className="mt-0.5 text-sm text-app-muted">{dept.name}</p>
         </div>
-      </div>
 
-      {!hasAnyData ? (
-        <p className="mt-4 text-xs text-app-muted">
-          Noch keine Einträge mit Enddatum — lege Objectives in der OKR-Tabelle an und vergib ein Datum, damit sie hier erscheinen.
-        </p>
-      ) : null}
+        {tasksRes.error ? (
+          <p className="mx-6 mt-4 rounded-xl border border-[#EC8580]/60 bg-[#FBC4C0]/35 px-4 py-3 text-sm font-medium text-[#8E2B27]">
+            {tasksRes.error.message}
+          </p>
+        ) : null}
 
-      {/* ── Quick links ── */}
-      <div className="mt-8 flex flex-wrap gap-3">
-        <Link
-          href={`/d/${dept.slug}/tasks`}
-          className="rounded-xl border border-app-border bg-app-card px-4 py-2.5 text-sm font-bold shadow-sm hover:border-app-brand-soft"
-        >
-          Deliverables
-        </Link>
-        <Link
-          href={`/d/${dept.slug}/okrs/table`}
-          className="rounded-xl border border-app-border bg-app-card px-4 py-2.5 text-sm font-bold shadow-sm hover:border-app-brand-soft"
-        >
-          OKRs
-        </Link>
-        <Link
-          href={`/d/${dept.slug}/boards`}
-          className="rounded-xl border border-app-border bg-app-card px-4 py-2.5 text-sm font-bold shadow-sm hover:border-app-brand-soft"
-        >
-          Board-Übersicht
-        </Link>
-      </div>
+        <div className="overflow-x-auto px-6 pb-6 pt-4">
+          <div className="grid min-w-[700px]" style={{ gridTemplateColumns: "120px repeat(3, 1fr)", gap: "0 16px" }}>
+            {/* Column headers */}
+            <div />
+            {QUARTERS.map((q, i) => {
+              const dates = ["01.04. – 30.06.", "01.07. – 30.09.", "01.10. – 31.12."];
+              return (
+                <div key={q} className="pb-3">
+                  <span className="text-sm font-bold text-app-ink">{q} 2026</span>
+                  <span className="ml-2 text-xs font-normal text-app-muted">{dates[i]}</span>
+                </div>
+              );
+            })}
+
+            {/* Objectives row */}
+            <div className="flex items-start pt-1 pr-3">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-app-muted">Objectives</span>
+            </div>
+            {QUARTERS.map((q) => (
+              <div key={q} className="flex flex-col gap-2">
+                {grid[q].objectives.length === 0 ? (
+                  <p className="text-[11px] text-app-muted">–</p>
+                ) : grid[q].objectives.map((item) => (
+                  <div key={item.id} className="rounded-xl border border-app-border bg-[var(--surface-1,#f8f9fb)] px-3 py-2.5">
+                    <p className="text-[12px] font-semibold text-app-ink leading-snug">{item.name}</p>
+                    <div className="mt-1.5"><StatusBadge status={item.status} /></div>
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            {/* Key Results row */}
+            <div className="flex items-start pt-4 pr-3">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-app-muted">Key Results</span>
+            </div>
+            {QUARTERS.map((q) => (
+              <div key={q} className="flex flex-col gap-2 pt-3">
+                {grid[q].keyResults.length === 0 ? (
+                  <p className="text-[11px] text-app-muted">–</p>
+                ) : grid[q].keyResults.map((item) => (
+                  <div key={item.id} className="rounded-xl border border-app-border bg-[var(--surface-1,#f8f9fb)] px-3 py-2.5">
+                    <p className="text-[12px] font-semibold text-app-ink leading-snug">{item.name}</p>
+                    <div className="mt-1.5"><StatusBadge status={item.status} /></div>
+                  </div>
+                ))}
+              </div>
+            ))}
+
+            {/* Deliverables row */}
+            <div className="flex items-start pt-4 pr-3">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-app-muted">Deliverables</span>
+            </div>
+            {QUARTERS.map((q) => (
+              <div key={q} className="pt-3">
+                {grid[q].deliverables.length === 0 ? (
+                  <p className="text-[11px] text-app-muted">–</p>
+                ) : (
+                  <div className="rounded-xl border border-app-border bg-[var(--surface-1,#f8f9fb)] px-3 py-2.5">
+                    <ul className="divide-y divide-app-border">
+                      {grid[q].deliverables.map((item) => (
+                        <li key={item.id} className="flex items-center justify-between gap-2 py-2 first:pt-0 last:pb-0">
+                          <p className="text-[12px] text-app-ink">{item.name}</p>
+                          <StatusBadge status={item.status} />
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {!hasAnyData ? (
+          <p className="px-6 pb-5 text-xs text-app-muted">
+            Noch keine Einträge mit Enddatum — lege Objectives an und vergib ein Datum, damit sie hier erscheinen.
+          </p>
+        ) : null}
+      </section>
+
 
       {/* ── Add Objective ── */}
       <section className="mt-8 rounded-2xl border border-app-border bg-app-card p-6 shadow-card">
         <DepartmentAddObjectiveForm departmentId={dept.id} />
         <p className="mt-4 text-xs leading-relaxed text-app-muted">
-          Key Results und operative Aufgaben legst du in der{" "}
+          Key Results und Deliverables legst du in der{" "}
           <Link href={`/d/${dept.slug}/okrs/table`} className="font-semibold text-app-brand hover:underline">
             OKR-Tabelle
           </Link>{" "}
@@ -207,8 +214,6 @@ export default async function DepartmentHubPage({
         </p>
       </section>
 
-      {/* ── OKR Preview ── */}
-      <DepartmentOkrPreview departmentId={dept.id} deptSlug={dept.slug} />
 
       {/* ── Boards ── */}
       {boards.length > 0 ? (

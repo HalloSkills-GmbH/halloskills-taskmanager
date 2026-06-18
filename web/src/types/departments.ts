@@ -5,6 +5,7 @@ export type DepartmentRow = {
   slug: string;
   sort_order: number;
   created_at: string;
+  responsible_name: string | null;
 };
 
 /** Board-Spalte: title wird beim Drag-Drop als tasks.status gesetzt. */

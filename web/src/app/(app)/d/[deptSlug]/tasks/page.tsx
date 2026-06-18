@@ -1,19 +1,15 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { TasksPageClient } from "@/components/tasks/TasksPageClient";
-import {
-  boardStatusesRecordFromConfigs,
-  loadAllBoardColumnConfigs,
-} from "@/lib/board-config/queries";
-import { normalizeLayoutHidden, normalizeLayoutLabels } from "@/lib/tasks/main-table-layout-shared";
+import { DeliverablesPageClient } from "@/components/tasks/DeliverablesPageClient";
 import { mergeLayoutWidths } from "@/lib/tasks/main-table-columns";
 import { fetchDepartmentBySlug } from "@/lib/supabase/department-queries";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAssigneeOptions } from "@/lib/profiles/actions";
 import { MAIN_TABLE_TASK_SELECT } from "@/lib/tasks/task-row-select";
 import type { MainTableLayoutRow, TaskCustomColumnRow } from "@/types/main-table";
-import type { StatusOption } from "@/types/profiles";
 import type { TaskRow } from "@/types/tasks";
+import type { OkrContextEntry } from "@/components/tasks/MainTableView";
 
 export default async function DepartmentTasksPage({
   params,
@@ -25,28 +21,38 @@ export default async function DepartmentTasksPage({
   if (!dept) notFound();
 
   const supabase = await createClient();
-  const [tasksRes, colsRes, layoutRes, boardRes] = await Promise.all([
-    supabase.from("tasks").select(MAIN_TABLE_TASK_SELECT).eq("department_id", dept.id).order("id"),
-    supabase.from("task_custom_columns").select("*").order("sort_order", { ascending: true }),
-    supabase.from("main_table_layout").select("*").eq("view_key", "tasks").maybeSingle(),
+  const [tasksRes, colsRes, layoutRes, okrRes] = await Promise.all([
     supabase
-      .from("department_boards")
-      .select("id")
+      .from("tasks")
+      .select(MAIN_TABLE_TASK_SELECT)
       .eq("department_id", dept.id)
-      .order("sort_order", { ascending: true })
-      .limit(1)
-      .maybeSingle(),
+      .in("item_kind", ["task", "deliverable"])
+      .order("end_date", { ascending: true, nullsFirst: false }),
+    supabase.from("task_custom_columns").select("*").order("sort_order", { ascending: true }),
+    supabase.from("main_table_layout").select("*").eq("view_key", "deliverables").maybeSingle(),
+    supabase
+      .from("tasks")
+      .select("id,name,item_kind,okr_objective_id,okr_key_result_id")
+      .eq("department_id", dept.id)
+      .in("item_kind", ["objective", "key_result"]),
   ]);
 
   const assigneeOptions = await fetchAssigneeOptions();
   const customCols = (colsRes.error ? [] : colsRes.data ?? []) as TaskCustomColumnRow[];
   const layoutRow = (layoutRes.error ? null : layoutRes.data) as MainTableLayoutRow | null;
-  const departmentDefaultBoardId = boardRes.error ? null : (boardRes.data?.id ?? null);
 
-  let initialBoardStatuses: Record<string, StatusOption[]> = {};
-  if (departmentDefaultBoardId) {
-    const boardConfigs = await loadAllBoardColumnConfigs(departmentDefaultBoardId);
-    initialBoardStatuses = boardStatusesRecordFromConfigs(boardConfigs);
+  // Build OKR context map: taskId → { obj name, kr name }
+  type OkrRow = { id: number; name: string; item_kind: string | null; okr_objective_id: number | null; okr_key_result_id: number | null };
+  const okrRows = (okrRes.data ?? []) as OkrRow[];
+  const objectivesById = new Map(okrRows.filter((r) => r.item_kind === "objective").map((r) => [r.id, r.name]));
+  const keyResultsById = new Map(okrRows.filter((r) => r.item_kind === "key_result").map((r) => [r.id, r.name]));
+
+  const okrContextMap = new Map<number, OkrContextEntry>();
+  for (const t of (tasksRes.data ?? []) as TaskRow[]) {
+    okrContextMap.set(t.id, {
+      obj: t.okr_objective_id ? (objectivesById.get(t.okr_objective_id) ?? null) : null,
+      kr: t.okr_key_result_id ? (keyResultsById.get(t.okr_key_result_id) ?? null) : null,
+    });
   }
 
   const cw = layoutRow?.column_widths;
@@ -54,10 +60,8 @@ export default async function DepartmentTasksPage({
     cw && typeof cw === "object" && !Array.isArray(cw)
       ? (cw as Record<string, number>)
       : undefined;
-  const merged = mergeLayoutWidths("tasks", storedWidths, customCols);
+  const merged = mergeLayoutWidths("deliverables", storedWidths, customCols);
   const layoutSyncKey = `${layoutRow?.updated_at ?? "0"}:${customCols.map((c) => c.id).join(",")}`;
-  const serverBuiltinColumnsHidden = normalizeLayoutHidden(layoutRow?.builtin_columns_hidden);
-  const serverBuiltinColumnLabels = normalizeLayoutLabels(layoutRow?.builtin_column_labels);
 
   return (
     <>
@@ -71,23 +75,17 @@ export default async function DepartmentTasksPage({
       <Suspense
         fallback={
           <div className="mx-auto max-w-[1600px] px-8 py-14 text-sm font-medium text-app-muted">
-            Aufgaben werden geladen…
+            Deliverables werden geladen…
           </div>
         }
       >
-        <TasksPageClient
+        <DeliverablesPageClient
           initialTasks={(tasksRes.data as TaskRow[]) ?? []}
           initialCustomColumns={customCols}
           initialMergedWidths={merged}
           layoutSyncKey={layoutSyncKey}
           departmentId={dept.id}
-          tasksPathPrefix={`/d/${dept.slug}/tasks`}
-          serverBuiltinColumnsHidden={serverBuiltinColumnsHidden}
-          serverBuiltinColumnLabels={serverBuiltinColumnLabels}
-          initialColumnOrder={layoutRow?.column_order ?? null}
-          initialGroupSort={layoutRow?.group_sort ?? null}
-          departmentDefaultBoardId={departmentDefaultBoardId}
-          initialBoardStatuses={initialBoardStatuses}
+          okrContextMap={okrContextMap}
           assigneeOptions={assigneeOptions}
         />
       </Suspense>

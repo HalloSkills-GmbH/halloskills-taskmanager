@@ -630,6 +630,7 @@ input, select, textarea { font-family: inherit; color: inherit; }
 .hs-mtable {
   display: flex; flex-direction: column; gap: 18px;
   background: transparent;
+  width: 100%; overflow-x: auto;
 }
 .hs-mtable-head {
   display: grid; gap: 0; padding: 10px 0 10px 8px;

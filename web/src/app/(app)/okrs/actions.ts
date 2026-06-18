@@ -42,7 +42,7 @@ export async function updateTaskFields(
     .from("tasks")
     .select("assigned, notes, name")
     .eq("id", id)
-    .maybeSingle();
+    .maybeSingle<{ assigned: string[] | null; notes: string | null; name: string }>();
 
   const { error } = await supabase.from("tasks").update(patch).eq("id", id);
   if (error) {
@@ -68,51 +68,58 @@ export async function updateTaskFields(
       message: string;
     }[] = [];
 
-    // Notification: task assigned to someone new
-    if (patch.assigned && typeof patch.assigned === "string" && patch.assigned !== currentTask?.assigned) {
-      notifications.push({
-        user_id: patch.assigned,
-        task_id: id,
-        actor_id: actorId,
-        actor_name: actorName,
-        type: "assigned",
-        message: `Du wurdest der Aufgabe „${currentTask?.name ?? ""}" zugewiesen.`,
-      });
+    const prevAssigned: string[] = currentTask?.assigned ?? [];
+
+    // Notification: task newly assigned to someone (notify each new assignee)
+    if (Array.isArray(patch.assigned)) {
+      const newAssignees = (patch.assigned as string[]).filter(
+        (uid) => !prevAssigned.includes(uid) && uid !== actorId,
+      );
+      for (const uid of newAssignees) {
+        notifications.push({
+          user_id: uid,
+          task_id: id,
+          actor_id: actorId,
+          actor_name: actorName,
+          type: "assigned",
+          message: `Du wurdest der Aufgabe „${currentTask?.name ?? ""}" zugewiesen.`,
+        });
+      }
     }
 
-    // Notification: note added on a task assigned to someone else
+    // Notification: note added — notify all current assignees except actor
     if (
       patch.notes !== undefined &&
-      currentTask?.assigned &&
-      currentTask.assigned !== actorId &&
-      patch.notes !== currentTask.notes
+      patch.notes !== currentTask?.notes
     ) {
-      notifications.push({
-        user_id: currentTask.assigned,
-        task_id: id,
-        actor_id: actorId,
-        actor_name: actorName,
-        type: "note_added",
-        message: `${actorName ?? "Jemand"} hat eine Notiz zu „${currentTask?.name ?? ""}" hinzugefügt.`,
-      });
+      const notifyIds = prevAssigned.filter((uid) => uid !== actorId);
+      for (const uid of notifyIds) {
+        notifications.push({
+          user_id: uid,
+          task_id: id,
+          actor_id: actorId,
+          actor_name: actorName,
+          type: "note_added",
+          message: `${actorName ?? "Jemand"} hat eine Notiz zu „${currentTask?.name ?? ""}" hinzugefügt.`,
+        });
+      }
     }
 
-    // Notification: task fields changed (status, dates) for the assignee
+    // Notification: task fields changed — notify all current assignees except actor
     const watchedFields = ["status", "start_date", "end_date", "progress"];
     const hasWatchedChange = watchedFields.some((f) => patch[f] !== undefined);
-    if (
-      hasWatchedChange &&
-      currentTask?.assigned &&
-      currentTask.assigned !== actorId
-    ) {
-      notifications.push({
-        user_id: currentTask.assigned,
-        task_id: id,
-        actor_id: actorId,
-        actor_name: actorName,
-        type: "task_changed",
-        message: `${actorName ?? "Jemand"} hat Änderungen an „${currentTask?.name ?? ""}" vorgenommen.`,
-      });
+    if (hasWatchedChange) {
+      const notifyIds = prevAssigned.filter((uid) => uid !== actorId);
+      for (const uid of notifyIds) {
+        notifications.push({
+          user_id: uid,
+          task_id: id,
+          actor_id: actorId,
+          actor_name: actorName,
+          type: "task_changed",
+          message: `${actorName ?? "Jemand"} hat Änderungen an „${currentTask?.name ?? ""}" vorgenommen.`,
+        });
+      }
     }
 
     if (notifications.length > 0) {

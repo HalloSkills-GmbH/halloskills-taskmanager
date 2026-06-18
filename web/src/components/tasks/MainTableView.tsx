@@ -95,7 +95,7 @@ const STATUS_EN: Record<string, string> = Object.fromEntries(
 );
 
 
-function subtaskButtonTitle(mode: "tasks" | "okr", parent: TaskRow): string {
+function subtaskButtonTitle(mode: "tasks" | "okr" | "deliverables", parent: TaskRow): string {
   if (mode !== "okr") return "Unteraufgabe";
   const k = normalizeItemKind(parent);
   if (k === "objective") return "Key Result hinzufügen";
@@ -108,10 +108,14 @@ type GroupBy = "none" | "topic" | "status" | "quarter";
 export type MainTableGroupBy = GroupBy;
 
 /** Clientseitige Sortierung der projizierten Flachliste vor Baumaufbau (nur sinnvoll im Aufgaben-Modus). */
-export type MainTableTaskSort = "none" | "name" | "start" | "status";
+export type MainTableTaskSort = "none" | "name" | "start" | "end" | "status";
+
+export type OkrContextEntry = { obj: string | null; kr: string | null };
 
 export type MainTableViewProps = {
-  mode: "tasks" | "okr";
+  mode: "tasks" | "okr" | "deliverables";
+  /** Liefert O/KR-Labels pro task_id für den Deliverables-Modus. */
+  okrContextMap?: Map<number, OkrContextEntry>;
   initialTasks: TaskRow[];
   enableRealtime?: boolean;
   taskFilters?: TaskListFilters;
@@ -400,18 +404,18 @@ function StatusCell({
           ref={btnRef}
           type="button"
           className="hs-cell-status"
-          style={{ background: vis.color, color: "#fff" }}
+          style={{ background: vis.soft, color: vis.color }}
           onClick={(e) => {
             e.stopPropagation();
             setOpen((o) => !o);
             setBlockerOpen(false);
           }}
         >
-          <span className="hs-dot" style={{ background: "#fff", opacity: 0.85 }} />
+          <span className="hs-dot" style={{ background: vis.dot }} />
           {(STATUS_DE[value] ?? value) || "—"}
           {isBlocked && blockerTasks.length > 0 && (
             <span
-              className="ml-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold hover:bg-white/40"
+              className="ml-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold" style={{ background: vis.color, color: vis.soft }}
               onClick={(e) => {
                 e.stopPropagation();
                 setBlockerOpen((o) => !o);
@@ -490,11 +494,14 @@ function StatusCell({
         document.body
       ) : null}
 
-      {/* Status dropdown (non-blocked) */}
-      {open ? (
+      {/* Status dropdown (non-blocked) — portal to avoid overflow clipping */}
+      {open ? ReactDOM.createPortal(
         <div
-          className="hs-menu"
-          style={{ left: 0, right: "auto", zIndex: 50 }}
+          className="hs-menu fixed"
+          style={(() => {
+            const r = btnRef.current?.getBoundingClientRect();
+            return r ? { top: r.bottom + window.scrollY + 4, left: r.left + window.scrollX, right: "auto", zIndex: 9999 } : { zIndex: 9999 };
+          })()}
           onClick={(e) => e.stopPropagation()}
         >
           {opts.map((s) => {
@@ -518,14 +525,15 @@ function StatusCell({
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body
       ) : null}
     </div>
   );
 }
 
 function headerLabel(
-  mode: "tasks" | "okr",
+  mode: "tasks" | "okr" | "deliverables",
   key: string,
   customColumns: TaskCustomColumnRow[],
   builtinColumnLabels: Record<string, string>,
@@ -533,7 +541,7 @@ function headerLabel(
   let base: string;
   if (key === COL.grab) base = "";
   else if (key === COL.name) base = "Aufgabe";
-  else if (key === COL.tipo) base = "Typ";
+  else if (key === COL.tipo) base = mode === "deliverables" ? "OKR" : "Typ";
   else if (key === COL.person) base = "Person";
   else if (key === COL.link) base = "OKR";
   else if (key === COL.boardProj) base = "Board / Projekt";
@@ -597,6 +605,7 @@ function SortableColumnHeaderCell({
     transition,
     opacity: isDragging ? 0.88 : undefined,
   };
+  const isIconOnly = typeof label !== "string";
   return (
     <span
       ref={setNodeRef}
@@ -604,15 +613,21 @@ function SortableColumnHeaderCell({
       className="group relative flex min-w-0 items-center px-2 py-1"
       {...attributes}
     >
-      <span className="flex min-w-0 flex-1 items-center gap-1">
-        <span
-          className="min-w-0 flex-1 cursor-grab touch-none select-none truncate"
-          {...listeners}
-        >
+      {isIconOnly ? (
+        <span className="flex flex-1 cursor-grab touch-none select-none items-center justify-center" {...listeners}>
           {label}
         </span>
-        {menuButton}
-      </span>
+      ) : (
+        <span className="flex min-w-0 flex-1 items-center gap-1">
+          <span
+            className="min-w-0 flex-1 cursor-grab touch-none select-none truncate"
+            {...listeners}
+          >
+            {label}
+          </span>
+          {menuButton}
+        </span>
+      )}
       {dropdown}
       {resize}
     </span>
@@ -901,11 +916,12 @@ export function MainTableView({
   initialColumnOrder = null,
   initialGroupSort = null,
   initialBoardStatuses = null,
+  okrContextMap,
 }: MainTableViewProps) {
   const router = useRouter();
   const storageKey = `main-${mode}-${departmentId ?? "all"}${tableStorageScopeSuffix ? `-${tableStorageScopeSuffix}` : ""}`;
   const [groupByInternal, setGroupByInternal] = useState<GroupBy>(
-    mode === "tasks" ? "topic" : "quarter",
+    mode === "tasks" ? "topic" : mode === "deliverables" ? "none" : "quarter",
   );
   const groupBy = groupByProp ?? groupByInternal;
   const setGroupBy = useCallback(
@@ -915,7 +931,22 @@ export function MainTableView({
     },
     [groupByProp, onGroupByChange],
   );
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => new Set());
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() => {
+    if ((mode === "okr" || mode === "deliverables") && (groupByProp ?? "quarter") === "quarter") {
+      const month = new Date().getMonth() + 1;
+      const curQ = month <= 3 ? 1 : month <= 6 ? 2 : month <= 9 ? 3 : 4;
+      const allQ = [
+        "Q1 01.01. - 31.03.",
+        "Q2 01.04. - 30.06.",
+        "Q3 01.07. - 30.09.",
+        "Q4 01.10. - 31.12.",
+        "Kein Datum",
+      ];
+      const curLabel = allQ[curQ - 1];
+      return new Set(allQ.filter((q) => q !== curLabel));
+    }
+    return new Set();
+  });
   const [expandedIds, setExpandedIds] = useState<Set<number>>(() => new Set());
   const [expandInit, setExpandInit] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1055,6 +1086,8 @@ export function MainTableView({
         return (a.start_date || "").localeCompare(b.start_date || "", undefined, {
           sensitivity: "variant",
         });
+      if (taskSort === "end")
+        return (a.end_date || "9999").localeCompare(b.end_date || "9999");
       if (taskSort === "status")
         return (a.status || "").localeCompare(b.status || "", "de", { sensitivity: "base" });
       return 0;
@@ -1608,7 +1641,7 @@ export function MainTableView({
         key={r.id}
         id={`task:${r.id}`}
         className={`hs-mrow min-w-max ${sub ? "hs-msub" : ""}`}
-        gridTemplateColumns={`${colTplVisible} 100px`}
+        gridTemplateColumns={mode === "tasks" ? `${colTplVisible} 100px` : colTplVisible}
         grabHidden={grabHidden}
         renderGrab={(listeners) => (
           <div
@@ -1684,25 +1717,48 @@ export function MainTableView({
             </div>
           </div>
         ) : null}
-        {mode === "okr" && !hiddenSet.has(COL.tipo) ? (
+        {(mode === "okr" || mode === "deliverables") && !hiddenSet.has(COL.tipo) ? (
           <div className="hs-mcell">
-            {(() => {
-              const kind = (r.item_kind || "task").toLowerCase();
-              const cfg =
-                kind === "objective"
-                  ? { label: "Objective", bg: "#EEF2FF", color: "#4338CA" }
-                  : kind === "key_result"
-                  ? { label: "Key Result", bg: "#ECFDF5", color: "#065F46" }
-                  : { label: "Deliverable", bg: "#FFF7ED", color: "#9A3412" };
-              return (
-                <span
-                  className="inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap"
-                  style={{ background: cfg.bg, color: cfg.color }}
-                >
-                  {cfg.label}
-                </span>
-              );
-            })()}
+            {mode === "deliverables" ? (
+              (() => {
+                const ctx = okrContextMap?.get(r.id);
+                return (
+                  <div className="flex flex-col gap-[3px] min-w-0">
+                    {ctx?.obj ? (
+                      <span className="block truncate rounded px-1.5 py-[1px] text-[10px] font-semibold leading-tight" style={{ background: "#EEF2FF", color: "#4338CA", maxWidth: 200 }}>
+                        O: {ctx.obj}
+                      </span>
+                    ) : null}
+                    {ctx?.kr ? (
+                      <span className="block truncate rounded px-1.5 py-[1px] text-[10px] font-semibold leading-tight" style={{ background: "#ECFDF5", color: "#065F46", maxWidth: 200 }}>
+                        KR: {ctx.kr}
+                      </span>
+                    ) : null}
+                    {!ctx?.obj && !ctx?.kr ? (
+                      <span className="text-[11px] text-[var(--muted)]">—</span>
+                    ) : null}
+                  </div>
+                );
+              })()
+            ) : (
+              (() => {
+                const kind = (r.item_kind || "task").toLowerCase();
+                const cfg =
+                  kind === "objective"
+                    ? { label: "Objective", bg: "#EEF2FF", color: "#4338CA" }
+                    : kind === "key_result"
+                    ? { label: "Key Result", bg: "#ECFDF5", color: "#065F46" }
+                    : { label: "Deliverable", bg: "#FFF7ED", color: "#9A3412" };
+                return (
+                  <span
+                    className="inline-block rounded-full px-2 py-0.5 text-[11px] font-semibold whitespace-nowrap"
+                    style={{ background: cfg.bg, color: cfg.color }}
+                  >
+                    {cfg.label}
+                  </span>
+                );
+              })()
+            )}
           </div>
         ) : null}
         {!hiddenSet.has(COL.person) ? (
@@ -1824,7 +1880,7 @@ export function MainTableView({
             onChange={(links) => void patch(r.id, { attachments: links })}
           />
         ) : null}
-        {mode === "okr" && !hiddenSet.has(COL.notes) ? (
+        {(mode === "okr" || mode === "deliverables") && !hiddenSet.has(COL.notes) ? (
           <div className="hs-mcell hs-mcell-center">
             <button
               type="button"
@@ -1850,14 +1906,18 @@ export function MainTableView({
           </div>
         ) : null}
         {customCells}
-        {mode === "okr" && !hiddenSet.has(COL.actions) ? (
+        {(mode === "okr" || mode === "deliverables") && !hiddenSet.has(COL.actions) ? (
           <div className="hs-mcell hs-mcell-center">
             <button
               type="button"
-              className="text-[12px] font-semibold text-[var(--danger)] hover:underline"
+              className="hs-iconbtn !text-[var(--danger)] hover:!text-[var(--danger)]"
               onClick={() => void removeRow(r.id)}
+              title="Löschen"
+              aria-label="Löschen"
             >
-              Löschen
+              <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                <path d="M3 6h18M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6M10 11v6M14 11v6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
             </button>
           </div>
         ) : null}
@@ -2049,7 +2109,7 @@ export function MainTableView({
       ) : (
         <DndContext sensors={sensors} onDragEnd={onMainDragEnd}>
         <div className="hs-mtable overflow-x-auto">
-          <div className="hs-mtable-head min-w-max" style={{ gridTemplateColumns: `${colTplVisible} 100px` }}>
+          <div className="hs-mtable-head min-w-max" style={{ gridTemplateColumns: mode === "tasks" ? `${colTplVisible} 100px` : colTplVisible }}>
             <SortableContext items={sortableColumnIds} strategy={horizontalListSortingStrategy}>
             {visibleColKeys.map((key, idx) => {
               const isCustom = key.startsWith("custom:");
@@ -2057,7 +2117,17 @@ export function MainTableView({
               const showBuiltinColMenu =
                 mode === "tasks" && !isCustom && TASKS_PERSISTABLE_BUILTIN_KEYS.has(key);
               const menuOpen = colMenuOpen === key;
-              const headLabel = headerLabel(mode, key, customColumns, builtinColumnLabels);
+              const headLabelRaw = headerLabel(mode, key, customColumns, builtinColumnLabels);
+              const headLabel: ReactNode =
+                key === COL.attach ? (
+                  <span className="flex w-full items-center justify-center">
+                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" aria-label="Anhänge"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  </span>
+                ) : key === COL.notes ? (
+                  <span className="flex w-full items-center justify-center">
+                    <svg width={13} height={13} viewBox="0 0 24 24" fill="none" aria-label="Notiz"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                  </span>
+                ) : key === COL.prog ? "Forts." : headLabelRaw;
               const menuButton =
                 idx > 0 ? (
                   <button
@@ -2120,7 +2190,7 @@ export function MainTableView({
                         onClick={() => {
                           const row = customColumns.find((c) => c.col_key === colId);
                           if (!row) return;
-                          const newName = window.prompt("Neuer Spaltenname:", headLabel);
+                          const newName = window.prompt("Neuer Spaltenname:", headLabelRaw);
                           if (!newName?.trim()) {
                             setColMenuOpen(null);
                             return;
@@ -2173,7 +2243,7 @@ export function MainTableView({
                           type="button"
                           className="flex w-full items-center gap-2 px-3 py-2 text-left text-[12px] hover:bg-[var(--hover)]"
                           onClick={() => {
-                            const newName = window.prompt("Neuer Spaltenname (leer = Standard):", headLabel);
+                            const newName = window.prompt("Neuer Spaltenname (leer = Standard):", headLabelRaw);
                             if (newName === null) {
                               setColMenuOpen(null);
                               return;
@@ -2228,7 +2298,7 @@ export function MainTableView({
                   <span
                     key={key}
                     className="group relative flex min-w-0 items-center px-2 py-1"
-                    style={{ textAlign: idx === 0 ? "center" : "left" }}
+                    style={{ textAlign: idx === 0 || key === COL.attach || key === COL.notes ? "center" : "left" }}
                   >
                     <span className="truncate">{headLabel}</span>
                     {menuButton}
@@ -2242,7 +2312,7 @@ export function MainTableView({
                 <SortableColumnHeaderCell
                   key={key}
                   id={`col:${key}`}
-                  textAlign={idx === 0 ? "center" : "left"}
+                  textAlign={idx === 0 || key === COL.attach || key === COL.notes ? "center" : "left"}
                   label={headLabel}
                   menuButton={menuButton}
                   dropdown={menuDropdown}
@@ -2251,6 +2321,7 @@ export function MainTableView({
               );
             })}
             </SortableContext>
+            {mode === "tasks" && (
             <button
               type="button"
               onClick={() => setAddColOpen(true)}
@@ -2261,6 +2332,7 @@ export function MainTableView({
               </svg>
               Spalte
             </button>
+            )}
           </div>
 
           {(() => {
@@ -2335,17 +2407,19 @@ export function MainTableView({
                       </div>
 
                       {!collapsed && renderTaskRowsNested(g.roots, 0)}
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void addTaskToGroup(g.key)}
-                        className="hs-add-task-row flex w-full items-center gap-2 border-b border-transparent px-3 py-2.5 text-[13px] text-[var(--muted)] transition hover:bg-[var(--card)] hover:text-[var(--ink)] disabled:opacity-50"
-                      >
-                        <svg width={14} height={14} viewBox="0 0 24 24" fill="none" className="shrink-0 opacity-60">
-                          <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
-                        </svg>
-                        {mode === "okr" ? "Objective hinzufügen…" : "Aufgabe hinzufügen…"}
-                      </button>
+                      {mode !== "deliverables" && (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void addTaskToGroup(g.key)}
+                          className="hs-add-task-row flex w-full items-center gap-2 border-b border-transparent px-3 py-2.5 text-[13px] text-[var(--muted)] transition hover:bg-[var(--card)] hover:text-[var(--ink)] disabled:opacity-50"
+                        >
+                          <svg width={14} height={14} viewBox="0 0 24 24" fill="none" className="shrink-0 opacity-60">
+                            <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.5" />
+                          </svg>
+                          {mode === "okr" ? "Objective hinzufügen…" : "Aufgabe hinzufügen…"}
+                        </button>
+                      )}
                     </>
                   )}
                 </SortableGroupShell>

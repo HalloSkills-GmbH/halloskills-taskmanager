@@ -50,11 +50,12 @@ export function filterTaskListRows(rows: TaskRow[], f: TaskListFilters): TaskRow
       if (!t.includes(f.topic.trim().toLowerCase())) return false;
     }
     if (f.assignee) {
-      const a = (r.assigned || "").toLowerCase();
+      const a = (Array.isArray(r.assigned) ? r.assigned.join(" ") : r.assigned || "").toLowerCase();
       if (!a.includes(f.assignee.trim().toLowerCase())) return false;
     }
     if (!q) return true;
-    const hay = `${r.name} ${r.notes || ""} ${r.topic || ""} ${r.assigned || ""}`.toLowerCase();
+    const assignedStr = Array.isArray(r.assigned) ? r.assigned.join(" ") : (r.assigned || "");
+    const hay = `${r.name} ${r.notes || ""} ${r.topic || ""} ${assignedStr}`.toLowerCase();
     return hay.includes(q);
   });
 }

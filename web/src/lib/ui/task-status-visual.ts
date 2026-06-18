@@ -13,28 +13,28 @@ const FALLBACK: StatusVisual = {
 const MAP: Record<string, StatusVisual> = {
   "not started": {
     color: "#64748B",
-    soft: "#E2E8F0",
+    soft: "#F1F5F9",
     dot: "#94A3B8",
   },
   planned: {
-    color: "#3B82F6",
-    soft: "#DBEAFE",
+    color: "#1d4ed8",
+    soft: "#dbeafe",
     dot: "#2563EB",
   },
   "in progress": {
-    color: "#D97706",
-    soft: "#FEF3C7",
-    dot: "#F59E0B",
+    color: "#854d0e",
+    soft: "#fef9c3",
+    dot: "#D97706",
   },
   complete: {
-    color: "#047857",
-    soft: "#D1FAE5",
-    dot: "#10B981",
+    color: "#15803d",
+    soft: "#f0fdf4",
+    dot: "#16a34a",
   },
   blocked: {
-    color: "#B91C1C",
-    soft: "#FEE2E2",
-    dot: "#EF4444",
+    color: "#be123c",
+    soft: "#fff1f2",
+    dot: "#e11d48",
   },
 };
 

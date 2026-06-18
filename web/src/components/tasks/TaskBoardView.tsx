@@ -77,7 +77,7 @@ function BoardCard({ task }: { task: TaskRow }) {
 
   const statusLabel = (task.status || "").trim() || "—";
   const deadline = (task.end_date || "").trim() || "—";
-  const person = (task.assigned || "").trim() || "—";
+  const person = (Array.isArray(task.assigned) ? task.assigned.join(", ") : task.assigned || "").trim() || "—";
 
   return (
     <article

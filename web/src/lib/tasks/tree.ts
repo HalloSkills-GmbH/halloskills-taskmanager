@@ -99,6 +99,12 @@ export function groupForestBy(
     if (!map.has(raw)) map.set(raw, []);
     map.get(raw)!.push(node);
   }
+  // For OKR quarter grouping: always show Q2, Q3, Q4 even if empty
+  if (groupBy === "quarter") {
+    for (const label of [QUARTER_LABELS[2], QUARTER_LABELS[3], QUARTER_LABELS[4]]) {
+      if (!map.has(label)) map.set(label, []);
+    }
+  }
   const entries = [...map.entries()];
   const defaultOrder = groupBy === "quarter" ? QUARTER_ORDER : null;
   const order = groupOrder?.length ? groupOrder : defaultOrder;

@@ -3,7 +3,7 @@ export type TaskRow = {
   id: number;
   name: string;
   topic: string | null;
-  assigned: string | null;
+  assigned: string[] | null;
   start_date: string | null;
   end_date: string | null;
   status: string | null;

@@ -7,7 +7,7 @@ import type { TaskCustomColumnRow } from "@/types/main-table";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export function useMainTableSync(
-  mode: "tasks" | "okr",
+  mode: "tasks" | "okr" | "deliverables",
   initialMergedWidths: Record<string, number>,
   initialCustomColumns: TaskCustomColumnRow[],
   enableRealtime: boolean,

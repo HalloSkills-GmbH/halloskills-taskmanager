@@ -20,6 +20,8 @@ export const taskUpdateSchema = z
     department_id: z.union([z.string().uuid(), z.null()]).optional(),
     project_id: z.union([z.string().uuid(), z.null()]).optional(),
     sort_order: z.coerce.number().int().min(0).optional(),
+    dependencies: z.array(z.number().int()).optional(),
+    attachments: z.array(z.unknown()).optional(),
   })
   .strict();
 

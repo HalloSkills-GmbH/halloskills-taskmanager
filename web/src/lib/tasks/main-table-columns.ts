@@ -15,6 +15,7 @@ export const COL = {
   end: "end",
   prog: "prog",
   attach: "attach",
+  notes: "notes",
   actions: "actions",
 } as const;
 
@@ -53,6 +54,7 @@ export const DEFAULT_WIDTHS_OKR: Record<string, number> = {
   ...DEFAULT_WIDTHS_TASKS,
   [COL.tipo]: 110,
   [COL.boardProj]: 160,
+  [COL.notes]: 52,
   [COL.actions]: 72,
 };
 
@@ -92,6 +94,7 @@ export function defaultMainTableColumnKeys(
   if (mode === "okr" && includeOkrBoardProject) keys.push(COL.boardProj);
   keys.push(COL.topic);
   keys.push(COL.status, COL.start, COL.end, COL.prog, COL.attach);
+  if (mode === "okr") keys.push(COL.notes);
   for (const c of [...customColumns].sort((a, b) => a.sort_order - b.sort_order)) {
     keys.push(customColWidthKey(c.col_key));
   }

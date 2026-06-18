@@ -43,12 +43,15 @@ import type { TaskCustomColumnRow } from "@/types/main-table";
 import type { TaskRow } from "@/types/tasks";
 import type { StatusOption } from "@/types/profiles";
 import { useRouter } from "next/navigation";
+import ReactDOM from "react-dom";
+import { createClient } from "@/lib/supabase/client";
 import {
   Fragment,
   useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -79,6 +82,17 @@ const STATUSES = [
   "Complete",
   "Blocked",
 ] as const;
+
+const STATUS_DE: Record<string, string> = {
+  "Not started": "Nicht gestartet",
+  "Planned":     "Geplant",
+  "In Progress": "In Bearbeitung",
+  "Complete":    "Erledigt",
+  "Blocked":     "Blockiert",
+};
+const STATUS_EN: Record<string, string> = Object.fromEntries(
+  Object.entries(STATUS_DE).map(([en, de]) => [de, en])
+);
 
 const ITEM_KINDS = ["task", "objective", "key_result"] as const;
 
@@ -164,6 +178,160 @@ function isDoneStatus(s: string | null | undefined): boolean {
   return (s || "").toLowerCase().includes("complete");
 }
 
+type NoteEntry = { id: string; text: string; createdAt: string; author?: string; authorColor?: string };
+
+function parseNotes(raw: string | null | undefined): NoteEntry[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) return parsed as NoteEntry[];
+  } catch {}
+  // legacy: plain string → wrap as single entry
+  return [{ id: "legacy", text: raw, createdAt: "" }];
+}
+
+function serializeNotes(notes: NoteEntry[]): string | null {
+  if (!notes.length) return null;
+  return JSON.stringify(notes);
+}
+
+type SharePointLink = { label: string; url: string };
+
+function AttachCell({
+  attachments,
+  onChange,
+}: {
+  attachments: unknown[] | null;
+  onChange: (links: SharePointLink[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [labelDraft, setLabelDraft] = useState("");
+  const [urlDraft, setUrlDraft] = useState("");
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+
+  const links: SharePointLink[] = (attachments ?? [])
+    .filter((a): a is SharePointLink => !!a && typeof (a as SharePointLink).url === "string");
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        popRef.current && !popRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) {
+        setOpen(false);
+        setLabelDraft("");
+        setUrlDraft("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const addLink = () => {
+    const url = urlDraft.trim();
+    if (!url) return;
+    const label = labelDraft.trim() || url;
+    onChange([...links, { label, url }]);
+    setLabelDraft("");
+    setUrlDraft("");
+  };
+
+  return (
+    <div className="hs-mcell hs-mcell-center">
+      <button
+        ref={btnRef}
+        type="button"
+        className="hs-iconbtn relative"
+        title="SharePoint-Links"
+        onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+      >
+        <svg width={13} height={13} viewBox="0 0 24 24" fill="none">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        {links.length > 0 && (
+          <span className="absolute -top-1 -right-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-[var(--accent)] text-[9px] font-bold text-white">
+            {links.length}
+          </span>
+        )}
+      </button>
+      {open ? ReactDOM.createPortal(
+        <div
+          ref={popRef}
+          className="fixed z-[9999] w-80 rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-pop"
+          style={(() => {
+            const r = btnRef.current?.getBoundingClientRect();
+            return r ? { top: r.bottom + window.scrollY + 8, left: r.left + window.scrollX - 200 } : {};
+          })()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="border-b border-[var(--border)] px-4 py-3">
+            <p className="text-[13px] font-bold text-[var(--ink)]">SharePoint-Links</p>
+            <p className="text-[11px] text-[var(--muted)]">Links zu Dateien oder Ordnern</p>
+          </div>
+          <div className="max-h-48 overflow-y-auto px-3 py-2">
+            {links.length === 0 ? (
+              <p className="py-1 text-[12px] text-[var(--muted)]">Noch keine Links eingetragen.</p>
+            ) : links.map((l, i) => (
+              <div key={i} className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--surface-2)]">
+                <svg width={12} height={12} viewBox="0 0 24 24" fill="none" className="shrink-0 text-[var(--accent)]">
+                  <path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                <a
+                  href={l.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 truncate text-[12px] text-[var(--accent)] hover:underline"
+                >
+                  {l.label}
+                </a>
+                <button
+                  type="button"
+                  className="shrink-0 text-[var(--muted)] hover:text-[var(--danger)]"
+                  onClick={() => onChange(links.filter((_, j) => j !== i))}
+                >
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                    <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="border-t border-[var(--border)] px-3 py-3 flex flex-col gap-2">
+            <input
+              type="text"
+              placeholder="Bezeichnung (optional)"
+              value={labelDraft}
+              onChange={(e) => setLabelDraft(e.target.value)}
+              className="hs-input w-full text-[12px]"
+            />
+            <div className="flex gap-2">
+              <input
+                type="url"
+                autoFocus
+                placeholder="https://halloskills.sharepoint.com/…"
+                value={urlDraft}
+                onChange={(e) => setUrlDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") addLink(); }}
+                className="hs-input flex-1 text-[12px]"
+              />
+              <button
+                type="button"
+                onClick={addLink}
+                className="hs-btn hs-btn-primary shrink-0 text-[12px]"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      ) : null}
+    </div>
+  );
+}
+
 function readCustomFields(row: TaskRow): Record<string, unknown> {
   const c = row.custom_fields;
   if (c && typeof c === "object" && !Array.isArray(c)) return { ...c };
@@ -175,34 +343,161 @@ function StatusCell({
   onChange,
   options,
   statusPalette,
+  dependencies,
+  allRows,
+  onDependenciesChange,
 }: {
   value: string;
   onChange: (s: string) => void;
-  /** Auswahlliste (Labels); Standard feste STATUSES. */
   options?: readonly string[];
-  /** Board-Spaltenkonfiguration: Farben pro Label (`board_column_config.statuses`). */
   statusPalette?: StatusOption[] | null;
+  dependencies?: number[] | null;
+  allRows?: TaskRow[];
+  onDependenciesChange?: (ids: number[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [blockerOpen, setBlockerOpen] = useState(false);
+  const [blockerSearch, setBlockerSearch] = useState("");
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const popRef = useRef<HTMLDivElement>(null);
+  const isBlocked = (value || "").toLowerCase().includes("block");
   const vis = statusVisualFromPalette(value, statusPalette);
   const opts =
     options ??
     (statusPalette?.length ? statusPalette.map((s) => s.label) : undefined) ??
     STATUSES;
+  const blockerIds = dependencies ?? [];
+  const blockerTasks = (allRows ?? []).filter((t) => blockerIds.includes(t.id));
+  const searchResults = blockerSearch.trim().length > 0
+    ? (allRows ?? []).filter(
+        (t) => !blockerIds.includes(t.id) &&
+          t.name?.toLowerCase().includes(blockerSearch.toLowerCase())
+      ).slice(0, 8)
+    : [];
+
+  // clean up orphaned dependency IDs when popup opens
+  useEffect(() => {
+    if (!blockerOpen || !onDependenciesChange) return;
+    const validIds = (allRows ?? []).map((t) => t.id);
+    const cleaned = blockerIds.filter((id) => validIds.includes(id));
+    if (cleaned.length !== blockerIds.length) onDependenciesChange(cleaned);
+  }, [blockerOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // close blocker popup on outside click
+  useEffect(() => {
+    if (!blockerOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (
+        popRef.current && !popRef.current.contains(e.target as Node) &&
+        btnRef.current && !btnRef.current.contains(e.target as Node)
+      ) {
+        setBlockerOpen(false);
+        setBlockerSearch("");
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [blockerOpen]);
+
   return (
     <div className="hs-pop relative h-full min-h-[36px] w-full">
-      <button
-        type="button"
-        className="hs-cell-status"
-        style={{ background: vis.color, color: "#fff" }}
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((o) => !o);
-        }}
-      >
-        <span className="hs-dot" style={{ background: "#fff", opacity: 0.85 }} />
-        {value || "—"}
-      </button>
+      {/* Status badge — left-click opens status menu, for Blocked also shows blocker count */}
+      <div className="group relative h-full w-full">
+        <button
+          ref={btnRef}
+          type="button"
+          className="hs-cell-status"
+          style={{ background: vis.color, color: "#fff" }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((o) => !o);
+            setBlockerOpen(false);
+          }}
+        >
+          <span className="hs-dot" style={{ background: "#fff", opacity: 0.85 }} />
+          {(STATUS_DE[value] ?? value) || "—"}
+          {isBlocked && blockerTasks.length > 0 && (
+            <span
+              className="ml-1.5 rounded-full bg-white/20 px-1.5 py-0.5 text-[10px] font-bold hover:bg-white/40"
+              onClick={(e) => {
+                e.stopPropagation();
+                setBlockerOpen((o) => !o);
+                setOpen(false);
+              }}
+            >
+              {blockerTasks.length}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Blocker popup (click on Blocked badge) */}
+      {blockerOpen && onDependenciesChange ? ReactDOM.createPortal(
+        <div
+          ref={popRef}
+          className="fixed z-[9999] w-72 rounded-xl border border-[var(--border)] bg-[var(--card)] shadow-pop"
+          style={(() => {
+            const r = btnRef.current?.getBoundingClientRect();
+            return r ? { top: r.bottom + window.scrollY + 8, left: r.left + window.scrollX } : {};
+          })()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="border-b border-[var(--border)] px-4 py-3">
+            <p className="text-[13px] font-bold text-[var(--ink)]">Blockiert durch</p>
+            <p className="text-[11px] text-[var(--muted)]">Welche Aufgaben blockieren diese?</p>
+          </div>
+          {/* Existing blockers */}
+          <div className="max-h-48 overflow-y-auto px-3 py-2">
+            {blockerTasks.length === 0 ? (
+              <p className="py-1 text-[12px] text-[var(--muted)]">Noch keine Aufgabe eingetragen.</p>
+            ) : blockerTasks.map((t) => (
+              <div key={t.id} className="flex items-center justify-between gap-2 rounded-lg px-2 py-1.5 hover:bg-[var(--surface-2)]">
+                <span className="text-[12px] text-[var(--ink)]">{t.name}</span>
+                <button
+                  type="button"
+                  className="shrink-0 text-[var(--muted)] hover:text-[var(--danger)]"
+                  onClick={() => onDependenciesChange(blockerIds.filter((id) => id !== t.id))}
+                >
+                  <svg width={14} height={14} viewBox="0 0 24 24" fill="none">
+                    <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
+          {/* Search to add */}
+          <div className="border-t border-[var(--border)] px-3 py-2">
+            <input
+              type="text"
+              autoFocus
+              placeholder="Aufgabe suchen…"
+              value={blockerSearch}
+              onChange={(e) => setBlockerSearch(e.target.value)}
+              className="hs-input w-full text-[12px]"
+            />
+            {searchResults.length > 0 && (
+              <div className="mt-1 max-h-40 overflow-y-auto">
+                {searchResults.map((t) => (
+                  <button
+                    key={t.id}
+                    type="button"
+                    className="hs-menuitem w-full text-left text-[12px]"
+                    onClick={() => {
+                      onDependenciesChange([...blockerIds, t.id]);
+                      setBlockerSearch("");
+                    }}
+                  >
+                    {t.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      ) : null}
+
+      {/* Status dropdown (non-blocked) */}
       {open ? (
         <div
           className="hs-menu"
@@ -217,12 +512,16 @@ function StatusCell({
                 type="button"
                 className="hs-menuitem"
                 onClick={() => {
-                  onChange(s);
+                  const enVal = STATUS_EN[s] ?? s;
+                  onChange(enVal);
                   setOpen(false);
+                  if (enVal.toLowerCase().includes("block") && onDependenciesChange) {
+                    setBlockerOpen(true);
+                  }
                 }}
               >
                 <span className="hs-dot" style={{ background: c.dot }} />
-                {s}
+                {STATUS_DE[s] ?? s}
               </button>
             );
           })}
@@ -251,6 +550,7 @@ function headerLabel(
   else if (key === COL.end) base = "Ende";
   else if (key === COL.prog) base = "Fortschritt";
   else if (key === COL.attach) base = "📎";
+  else if (key === COL.notes) base = "📝";
   else if (key === COL.actions) base = "";
   else if (key.startsWith("custom:")) {
     const ck = key.slice("custom:".length);
@@ -392,6 +692,192 @@ function SortableTaskTableRow({
     >
       {!grabHidden ? renderGrab(listeners) : null}
       {rest}
+    </div>
+  );
+}
+
+function AuthorAvatar({ name, color }: { name?: string; color?: string }) {
+  const initials = (name ?? "?").split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  return (
+    <div
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-[12px] font-bold text-white"
+      style={{ background: color ?? "var(--accent)" }}
+      title={name}
+    >
+      {initials}
+    </div>
+  );
+}
+
+function NotesPanelInner({
+  row,
+  onClose,
+  onSave,
+  assigneeOptions,
+}: {
+  row: TaskRow;
+  onClose: () => void;
+  onSave: (serialized: string | null) => Promise<void>;
+  assigneeOptions: AssigneeOption[];
+}) {
+  const [notes, setNotes] = useState<NoteEntry[]>(() => parseNotes(row.notes));
+  const [draft, setDraft] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editText, setEditText] = useState("");
+  const [currentUser, setCurrentUser] = useState<{ name: string; color?: string } | null>(null);
+
+  useEffect(() => {
+    const supabase = createClient();
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) return;
+      const email = data.user.email ?? "";
+      const profile = assigneeOptions.find(
+        (o) => o.type === "profile" && (o.id === data.user!.id || (o as { email?: string }).email === email)
+      );
+      if (profile) {
+        setCurrentUser({ name: profile.name, color: profile.color });
+      } else {
+        setCurrentUser({ name: email.split("@")[0] ?? "Ich" });
+      }
+    });
+  }, [assigneeOptions]);
+
+  const save = async (updated: NoteEntry[]) => {
+    setNotes(updated);
+    await onSave(serializeNotes(updated));
+  };
+
+  const addNote = async () => {
+    if (!draft.trim()) return;
+    const entry: NoteEntry = {
+      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      text: draft.trim(),
+      createdAt: new Date().toISOString(),
+      author: currentUser?.name,
+      authorColor: currentUser?.color,
+    };
+    await save([...notes, entry]);
+    setDraft("");
+  };
+
+  const deleteNote = async (id: string) => {
+    await save(notes.filter((n) => n.id !== id));
+  };
+
+  const saveEdit = async (id: string) => {
+    if (!editText.trim()) return;
+    await save(notes.map((n) => n.id === id ? { ...n, text: editText.trim() } : n));
+    setEditingId(null);
+  };
+
+  return (
+    <div className="fixed inset-0 z-[60] flex" onClick={onClose}>
+      <div className="flex-1 bg-black/20" />
+      <div
+        className="flex h-full w-full max-w-md flex-col border-l border-[var(--border)] bg-[var(--card)] shadow-pop"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* header */}
+        <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-4">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-[var(--muted)]">Notizen</p>
+            <h3 className="mt-0.5 text-[15px] font-bold text-[var(--ink)]">{row.name}</h3>
+          </div>
+          <button type="button" className="hs-iconbtn" onClick={onClose}>
+            <svg width={16} height={16} viewBox="0 0 24 24" fill="none">
+              <path d="M18 6L6 18M6 6l12 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </button>
+        </div>
+
+        {/* notes list */}
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+          {notes.length === 0 && (
+            <p className="text-[13px] text-[var(--muted)]">Noch keine Notizen.</p>
+          )}
+          {notes.map((n) => (
+            <div key={n.id} className="flex gap-3 group/note">
+              <AuthorAvatar name={n.author} color={n.authorColor} />
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center gap-2">
+                    {n.author && <span className="text-[12px] font-semibold text-[var(--ink)]">{n.author}</span>}
+                    <span className="text-[11px] text-[var(--muted)]">
+                      {n.createdAt ? new Date(n.createdAt).toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" }) : ""}
+                    </span>
+                  </div>
+                  <div className="flex gap-1 opacity-0 group-hover/note:opacity-100 transition-opacity">
+                    <button
+                      type="button"
+                      className="hs-iconbtn !w-6 !h-6 text-[var(--muted)] hover:text-[var(--ink)]"
+                      onClick={() => { setEditingId(n.id); setEditText(n.text); }}
+                    >
+                      <svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                        <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      className="hs-iconbtn !w-6 !h-6 text-[var(--muted)] hover:text-[var(--danger)]"
+                      onClick={() => void deleteNote(n.id)}
+                    >
+                      <svg width={12} height={12} viewBox="0 0 24 24" fill="none">
+                        <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                {editingId === n.id ? (
+                  <div className="rounded-xl border border-[var(--accent)] bg-[var(--bg)]">
+                    <textarea
+                      autoFocus
+                      className="w-full resize-none bg-transparent px-3 pt-3 pb-2 text-[13px] text-[var(--ink)] outline-none"
+                      rows={3}
+                      value={editText}
+                      onChange={(e) => setEditText(e.target.value)}
+                    />
+                    <div className="flex justify-end gap-2 px-3 pb-3">
+                      <button type="button" className="hs-btn hs-btn-ghost text-[12px]" onClick={() => setEditingId(null)}>Abbrechen</button>
+                      <button type="button" className="hs-btn hs-btn-primary text-[12px]" onClick={() => void saveEdit(n.id)}>Speichern</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-[var(--border)] bg-[var(--surface-2)] px-4 py-3">
+                    <p className="whitespace-pre-wrap text-[13px] text-[var(--ink)]">{n.text}</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* compose */}
+        <div className="border-t border-[var(--border)] px-5 py-4">
+          <div className="flex gap-3">
+            <AuthorAvatar name={currentUser?.name} color={currentUser?.color} />
+            <div className="flex-1 rounded-xl border border-[var(--border)] bg-[var(--bg)] focus-within:border-[var(--accent)] transition-colors">
+              <textarea
+                className="w-full resize-none bg-transparent px-3 pt-3 pb-2 text-[13px] text-[var(--ink)] outline-none placeholder:text-[var(--muted)]"
+                rows={3}
+                placeholder="Neue Notiz verfassen…"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) void addNote(); }}
+              />
+              <div className="flex items-center justify-end px-3 pb-3">
+                <button
+                  type="button"
+                  disabled={!draft.trim()}
+                  className="hs-btn hs-btn-primary text-[12px] disabled:opacity-40"
+                  onClick={() => void addNote()}
+                >
+                  Hinzufügen
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -600,11 +1086,10 @@ export function MainTableView({
 
   useLayoutEffect(() => {
     if (expandInit || rowsForForest.length === 0) return;
-    const stored = loadExpandedIdsFromStorage(storageKey);
-    const allExpand = collectIdsWithChildren(forest);
-    setExpandedIds(stored ?? allExpand);
+    const stored = mode === "okr" ? null : loadExpandedIdsFromStorage(storageKey);
+    setExpandedIds(stored ?? new Set());
     setExpandInit(true);
-  }, [forest, storageKey, expandInit, rowsForForest.length]);
+  }, [forest, storageKey, expandInit, rowsForForest.length, mode]);
 
   useEffect(() => {
     if (!expandInit) return;
@@ -1209,7 +1694,7 @@ export function MainTableView({
               <div className="hs-name-actions">
                 <button
                   type="button"
-                  className="hs-iconbtn flex items-center gap-1 !px-2 text-[11px] font-semibold"
+                  className="hs-iconbtn"
                   title={subtaskButtonTitle(mode, r)}
                   disabled={busy}
                   onClick={(e) => {
@@ -1217,35 +1702,9 @@ export function MainTableView({
                     void addSubtask(r);
                   }}
                 >
-                  <svg width={11} height={11} viewBox="0 0 24 24" fill="none" className="shrink-0">
+                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" className="shrink-0">
                     <path d="M12 5v14M5 12h14" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" />
                   </svg>
-                  {subtaskButtonTitle(mode, r)}
-                </button>
-                <button
-                  type="button"
-                  className="hs-iconbtn flex items-center gap-1 !px-2 text-[11px] font-semibold"
-                  title={r.notes ? r.notes.slice(0, 80) + (r.notes.length > 80 ? "…" : "") : "Notiz hinzufügen"}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setNotesRow(r);
-                    setNotesDraft(r.notes || "");
-                  }}
-                  style={r.notes ? { color: "#2563eb" } : undefined}
-                >
-                  <svg width={12} height={12} viewBox="0 0 24 24" fill="none" className="shrink-0">
-                    <path
-                      d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
-                  Notiz
-                  {r.notes ? (
-                    <span className="ml-0.5 inline-block h-1.5 w-1.5 rounded-full bg-[#2563eb]" />
-                  ) : null}
                 </button>
               </div>
             </div>
@@ -1335,6 +1794,9 @@ export function MainTableView({
               options={builtinStatusLabelList}
               statusPalette={boardStatuses[COL.status]}
               onChange={(s) => void patch(r.id, { status: s })}
+              dependencies={r.dependencies}
+              allRows={allRows}
+              onDependenciesChange={(ids) => void patch(r.id, { dependencies: ids })}
             />
           </div>
         ) : null}
@@ -1366,35 +1828,52 @@ export function MainTableView({
         ) : null}
         {!hiddenSet.has(COL.prog) ? (
           <div className="hs-mcell hs-mcell-prog">
-            {mode === "okr" && kind !== "key_result" ? null : <div className="hs-prog-cell group w-full">
-              <div className="hs-prog cursor-pointer" onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                const pct = Math.round(((e.clientX - rect.left) / rect.width) * 100);
-                void patch(r.id, { progress: Math.max(0, Math.min(100, pct)) });
-              }}>
-                <span
-                  className="hs-prog-fill bg-[var(--accent)]"
-                  style={{ width: `${prog}%` }}
-                />
-              </div>
-              <input
-                type="number"
-                min={0}
-                max={100}
-                className="hs-prog-input hidden w-12 text-right text-[11px] group-hover:inline"
-                value={prog}
-                onChange={(e) => {
-                  const v = Math.max(0, Math.min(100, parseInt(e.target.value, 10) || 0));
-                  void patch(r.id, { progress: v });
-                }}
-              />
-              <span className="hs-prog-num group-hover:hidden">{prog}%</span>
-            </div>}
+            {mode === "okr" && kind !== "key_result" ? null : (() => {
+              const deliverables = node.children;
+              const total = deliverables.length;
+              const doneCount = deliverables.filter(c => isDoneStatus(c.row.status)).length;
+              const autoPct = total ? Math.round((doneCount / total) * 100) : 0;
+              return (
+                <div className="hs-prog-cell w-full">
+                  <div className="hs-prog">
+                    <span className="hs-prog-fill bg-[var(--accent)]" style={{ width: `${autoPct}%` }} />
+                  </div>
+                  <span className="hs-prog-num">{autoPct}%</span>
+                </div>
+              );
+            })()}
           </div>
         ) : null}
         {!hiddenSet.has(COL.attach) ? (
-          <div className="hs-mcell hs-mcell-center text-[12px] font-semibold text-[var(--muted)]">
-            {Array.isArray(r.attachments) ? r.attachments.length : 0}
+          <AttachCell
+            attachments={r.attachments}
+            onChange={(links) => void patch(r.id, { attachments: links })}
+          />
+        ) : null}
+        {mode === "okr" && !hiddenSet.has(COL.notes) ? (
+          <div className="hs-mcell hs-mcell-center">
+            <button
+              type="button"
+              className="hs-iconbtn hs-notes-btn"
+              title={parseNotes(r.notes).length > 0 ? `${parseNotes(r.notes).length} Notiz(en)` : "Notiz hinzufügen"}
+              onClick={(e) => {
+                e.stopPropagation();
+                setNotesRow(r);
+                setNotesDraft(r.notes || "");
+              }}
+              style={r.notes ? { color: "#2563eb" } : undefined}
+            >
+              <svg width={13} height={13} viewBox="0 0 24 24" fill="none" className="shrink-0">
+                <path
+                  d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                  stroke="currentColor"
+                  strokeWidth="1.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+              {r.notes ? <span className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-[#2563eb]" /> : null}
+            </button>
           </div>
         ) : null}
         {customCells}
@@ -1913,38 +2392,15 @@ export function MainTableView({
       )}
 
       {notesRow ? (
-        <div className="hs-drawer-bg z-[60]" onClick={() => setNotesRow(null)}>
-          <div className="hs-drawer" onClick={(e) => e.stopPropagation()} role="dialog">
-            <div className="hs-drawer-head">
-              <h3 className="text-sm font-bold text-[var(--ink)]">Notizen</h3>
-            </div>
-            <div className="hs-drawer-body">
-              <p className="hs-drawer-title font-display text-2xl italic text-[var(--ink)]">
-                {notesRow.name}
-              </p>
-              <textarea
-                className="hs-input min-h-[240px]"
-                value={notesDraft}
-                onChange={(e) => setNotesDraft(e.target.value)}
-              />
-              <div className="flex justify-end gap-2">
-                <button type="button" className="hs-btn hs-btn-ghost" onClick={() => setNotesRow(null)}>
-                  Abbrechen
-                </button>
-                <button
-                  type="button"
-                  className="hs-btn hs-btn-primary"
-                  onClick={async () => {
-                    await patch(notesRow.id, { notes: notesDraft || null });
-                    setNotesRow(null);
-                  }}
-                >
-                  Speichern
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
+        <NotesPanelInner
+          row={notesRow}
+          onClose={() => setNotesRow(null)}
+          assigneeOptions={assigneeOptions}
+          onSave={async (serialized) => {
+            await patch(notesRow.id, { notes: serialized });
+            setNotesRow((prev) => prev ? { ...prev, notes: serialized } : null);
+          }}
+        />
       ) : null}
 
       {editingGroup ? (

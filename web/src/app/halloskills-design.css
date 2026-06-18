@@ -762,10 +762,11 @@ input, select, textarea { font-family: inherit; color: inherit; }
   font-size: 10px; font-weight: 800; letter-spacing: .04em; flex: none;
 }
 .hs-name-actions {
-  display: flex; gap: 3px; opacity: 0; transition: opacity .12s; margin-left: 6px; flex-shrink: 0;
+  display: flex; gap: 3px; margin-left: 6px; flex-shrink: 0;
 }
-.hs-mrow:hover .hs-name-actions { opacity: 1; }
-.hs-name-actions .hs-iconbtn { height: 24px; width: auto; border-radius: 6px; padding: 0 7px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.hs-name-actions .hs-iconbtn { height: 22px; width: 22px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center; }
+/* notes column icon button — always visible, relative for dot indicator */
+.hs-notes-btn { position: relative; }
 
 /* Progress in cell */
 .hs-prog-cell {

@@ -150,19 +150,8 @@ async function DashboardContent() {
           assigneeOptions={assigneeOptions}
           emptyText="Keine Aufgaben nächste Woche fällig."
           storageKey="dashboard-next-week"
+          collapsible
         />
-        {myTasksNoDueDate.length > 0 && (
-          <DashboardWeekSection
-            title="Ohne Fälligkeitsdatum"
-            tasks={myTasksNoDueDate}
-            customColumns={customCols}
-            mergedWidths={mergedWidths}
-            layoutSyncKey={layoutSyncKey}
-            assigneeOptions={assigneeOptions}
-            emptyText=""
-            storageKey="dashboard-no-date"
-          />
-        )}
       </div>
 
       {tasksRes.error ? (

@@ -20,7 +20,7 @@ export default async function DepartmentTasksPage({
   if (!dept) notFound();
 
   const supabase = await createClient();
-  const [tasksRes, colsRes, layoutRes, okrRes] = await Promise.all([
+  const [tasksRes, colsRes, layoutRes, okrRes, assigneeOptions] = await Promise.all([
     supabase
       .from("tasks")
       .select(MAIN_TABLE_TASK_SELECT)
@@ -34,9 +34,8 @@ export default async function DepartmentTasksPage({
       .select("id,name,item_kind,okr_objective_id,okr_key_result_id")
       .eq("department_id", dept.id)
       .in("item_kind", ["objective", "key_result"]),
+    fetchAssigneeOptions(),
   ]);
-
-  const assigneeOptions = await fetchAssigneeOptions();
   const customCols = (colsRes.error ? [] : colsRes.data ?? []) as TaskCustomColumnRow[];
   const layoutRow = (layoutRes.error ? null : layoutRes.data) as MainTableLayoutRow | null;
 

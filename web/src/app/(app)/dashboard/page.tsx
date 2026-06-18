@@ -105,7 +105,7 @@ async function DashboardContent() {
         {displayName ? `Hallo, ${displayName.split(" ")[0]} 👋` : "Mein Tag"}
       </h1>
       <p className="mt-2 max-w-3xl text-sm font-medium leading-relaxed text-app-text">
-        Deine persönliche Übersicht — Aufgaben, die diese und nächste Woche fällig sind.
+        Deine persönliche Übersicht — Deliverables, die diese und nächste Woche starten oder fällig sind.
       </p>
 
       <div className="mt-8 space-y-6">
@@ -117,7 +117,7 @@ async function DashboardContent() {
           mergedWidths={mergedWidths}
           layoutSyncKey={layoutSyncKey}
           assigneeOptions={assigneeOptions}
-          emptyText="Keine Aufgaben diese Woche fällig."
+          emptyText="Keine Deliverables diese Woche."
           storageKey="dashboard-this-week"
         />
         <DashboardWeekSection
@@ -127,7 +127,7 @@ async function DashboardContent() {
           mergedWidths={mergedWidths}
           layoutSyncKey={layoutSyncKey}
           assigneeOptions={assigneeOptions}
-          emptyText="Keine Aufgaben nächste Woche fällig."
+          emptyText="Keine Deliverables nächste Woche."
           storageKey="dashboard-next-week"
           collapsible
         />

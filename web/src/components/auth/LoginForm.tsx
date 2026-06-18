@@ -26,6 +26,7 @@ export function LoginForm() {
       return;
     }
     // Keep loading=true until navigation completes
+    router.refresh();
     router.replace("/dashboard");
   }
 

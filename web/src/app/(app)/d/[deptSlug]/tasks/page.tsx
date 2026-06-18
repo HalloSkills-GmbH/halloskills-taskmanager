@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import { notFound } from "next/navigation";
-import { TasksPageClient } from "@/components/tasks/TasksPageClient";
 import { DeliverablesPageClient } from "@/components/tasks/DeliverablesPageClient";
 import { mergeLayoutWidths } from "@/lib/tasks/main-table-columns";
 import { fetchDepartmentBySlug } from "@/lib/supabase/department-queries";

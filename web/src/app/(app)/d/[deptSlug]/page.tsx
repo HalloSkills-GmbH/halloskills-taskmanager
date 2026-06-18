@@ -53,11 +53,6 @@ function TaskCard({ item }: { item: OkrItem }) {
 const QUARTERS = ["Q2", "Q3", "Q4"] as const;
 type Quarter = (typeof QUARTERS)[number];
 
-const ROW_LABELS: { key: "objectives" | "keyResults" | "deliverables"; label: string }[] = [
-  { key: "objectives",   label: "Objectives"   },
-  { key: "keyResults",   label: "Key Results"  },
-  { key: "deliverables", label: "Deliverables" },
-];
 
 export default async function DepartmentHubPage({
   params,

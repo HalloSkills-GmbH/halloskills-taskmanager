@@ -395,7 +395,7 @@ function NavIcon({ item, active }: { item: NavItem; active: boolean }) {
 }
 
 /** DndContext nur um die Board-Liste einer Abteilung — Abteilungsköpfe/Sublinks bleiben außerhalb (SSR + Hydration stabil). */
-function DepartmentBoardsDnd({
+function _DepartmentBoardsDnd({
   deptId,
   boards,
   children,
@@ -608,16 +608,7 @@ export function ProductSidebar({
     });
   };
 
-  const toggleBoardsCollapsed = (deptId: string) => {
-    setCollapsedBoardsDeptIds((prev) => {
-      const n = new Set(prev);
-      if (n.has(deptId)) n.delete(deptId);
-      else n.add(deptId);
-      return n;
-    });
-  };
-
-  const openCreateBoardModal = (dept: { id: string; slug: string }) => {
+  const _openCreateBoardModal = (dept: { id: string; slug: string }) => {
     setCreateBoardForDept(dept);
     setCreateType("board");
     setNewBoardName("");
@@ -718,7 +709,7 @@ export function ProductSidebar({
     );
   };
 
-  const renderBoardsWithGroups = (slug: string, boards: DeptBoardNavItem[], deptId: string) => {
+  const _renderBoardsWithGroups = (slug: string, boards: DeptBoardNavItem[], deptId: string) => {
     const groups = boards.filter((b) => b.isGroup);
     const topLevelBoards = boards.filter((b) => !b.isGroup && !b.parentId);
     const boardsByParent = new Map<string, DeptBoardNavItem[]>();
@@ -854,9 +845,7 @@ export function ProductSidebar({
               {orderedDepartments.map((d) => {
                   const base = `/d/${d.slug}`;
                   const inDept = pathname.startsWith(base);
-                  const boards = d.id ? departmentBoardsByDeptId[d.id] ?? [] : [];
                   const deptCollapsed = inDept ? false : collapsedDeptSlugs.has(d.slug);
-                  const boardsSectionCollapsed = d.id ? collapsedBoardsDeptIds.has(d.id) : false;
 
                   const handleDeptUpdate = async (data: { name?: string; icon?: string; color?: string }) => {
                     if (!d.id) return { ok: false, message: "Keine ID" };

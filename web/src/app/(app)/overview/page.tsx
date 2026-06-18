@@ -1,6 +1,5 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { CreateDepartmentForm } from "@/components/dashboard/CreateDepartmentForm";
 import { normalizeItemKind } from "@/lib/okr/queries";
 import { fetchAssigneeOptions } from "@/lib/profiles/actions";
 import { createClient } from "@/lib/supabase/server";
@@ -39,20 +38,6 @@ function buildOkrByDepartment(tasks: TaskDashRow[], qStart: string, qEnd: string
   return map;
 }
 
-function krProgress(krs: TaskDashRow[]) {
-  if (!krs.length) return { done: 0, inProgress: 0, planned: 0, total: 0, pctDone: 0, pctInProgress: 0 };
-  const s = (k: TaskDashRow) => (k.status ?? "").toLowerCase();
-  const done = krs.filter((k) => s(k).includes("complet")).length;
-  const inProg = krs.filter((k) => s(k).includes("progress")).length;
-  const planned = krs.filter((k) => s(k).includes("planned") || s(k).includes("not started") || !s(k)).length;
-  const total = krs.length;
-  return {
-    done, inProgress: inProg, planned,
-    total,
-    pctDone: Math.round((done / total) * 100),
-    pctInProgress: Math.round((inProg / total) * 100),
-  };
-}
 
 const STATUS_COLOR: Record<string, { bg: string; color: string }> = {
   complete:    { bg: "#f0fdf4", color: "#15803d" },

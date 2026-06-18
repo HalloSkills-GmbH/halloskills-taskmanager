@@ -57,7 +57,7 @@ export function DashboardWeekSection({
         <h2 className="text-base font-bold text-app-ink">
           {title}
           {collapsible && tasks.length > 0 && (
-            <span className="ml-2 text-sm font-normal text-app-muted">{tasks.length} Aufgabe{tasks.length !== 1 ? "n" : ""}</span>
+            <span className="ml-2 text-sm font-normal text-app-muted">{tasks.length} Deliverable{tasks.length !== 1 ? "s" : ""}</span>
           )}
         </h2>
       </button>

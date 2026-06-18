@@ -234,6 +234,7 @@ export function DeliverablesPageClient({
         )}
       </div>
 
+      <div className="px-6">
       <MainTableView
         mode="deliverables"
         initialTasks={filteredTasks}
@@ -250,6 +251,7 @@ export function DeliverablesPageClient({
         hiddenColumnKeys={DELIVERABLES_HIDDEN}
         tableStorageScopeSuffix="deliverables"
       />
+      </div>
     </div>
   );
 }

@@ -14,7 +14,7 @@ type Notif = {
   task_id: number;
   read_at: string | null;
   created_at: string;
-  tasks?: { department_id?: string | null } | null;
+  tasks?: { department_id?: string | null; item_kind?: string | null } | null;
 };
 
 type Tab = "all" | "unread";
@@ -98,7 +98,7 @@ export function NotificationsBell({ deptSlugs }: { deptSlugs: Record<string, str
       if (!userData.user) return;
       const { data } = await supabase
         .from("task_notifications")
-        .select("id,type,message,actor_name,task_id,read_at,created_at,tasks(department_id)")
+        .select("id,type,message,actor_name,task_id,read_at,created_at,tasks(department_id,item_kind)")
         .eq("user_id", userData.user.id)
         .order("created_at", { ascending: false })
         .limit(30);
@@ -136,7 +136,10 @@ export function NotificationsBell({ deptSlugs }: { deptSlugs: Record<string, str
     }
     const deptId = n.tasks?.department_id;
     const slug = deptId ? deptSlugs[deptId] : null;
-    const href = slug ? `/d/${slug}/okrs/table` : `/okrs/table`;
+    const isOkr = ["objective", "key_result"].includes(n.tasks?.item_kind ?? "");
+    const href = slug
+      ? isOkr ? `/d/${slug}/okrs/table` : `/d/${slug}/tasks`
+      : isOkr ? `/okrs/table` : `/tasks`;
     setOpen(false);
     router.push(href);
   };

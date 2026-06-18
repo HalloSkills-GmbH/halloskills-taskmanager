@@ -18,7 +18,7 @@ export function DeptTasksShell({
   const qs = searchParams.toString();
 
   const capitalizedSlug = deptSlug.charAt(0).toUpperCase() + deptSlug.slice(1);
-  useSetPageTitle(`Aufgaben · ${capitalizedSlug}`);
+  useSetPageTitle(`Deliverables · ${capitalizedSlug}`);
 
   const tabs = useMemo(() => {
     const base = `/d/${deptSlug}/tasks`;

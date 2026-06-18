@@ -6,6 +6,7 @@ import {
   fetchBoardProjectOptionsForDepartment,
   fetchDepartmentBySlug,
 } from "@/lib/supabase/department-queries";
+import { fetchAssigneeOptions } from "@/lib/profiles/actions";
 import { createClient } from "@/lib/supabase/server";
 import { MAIN_TABLE_TASK_SELECT } from "@/lib/tasks/task-row-select";
 import type { MainTableLayoutRow, TaskCustomColumnRow } from "@/types/main-table";
@@ -43,7 +44,10 @@ export default async function DepartmentOkrsTablePage({
       : undefined;
   const merged = mergeLayoutWidths("okr", storedWidths, customCols);
   const layoutSyncKey = `${layoutRow?.updated_at ?? "0"}:${customCols.map((c) => c.id).join(",")}`;
-  const boardProjectOptions = await fetchBoardProjectOptionsForDepartment(dept.id);
+  const [boardProjectOptions, assigneeOptions] = await Promise.all([
+    fetchBoardProjectOptionsForDepartment(dept.id),
+    fetchAssigneeOptions(),
+  ]);
 
   return (
     <div>
@@ -62,6 +66,7 @@ export default async function DepartmentOkrsTablePage({
         boardProjectOptions={boardProjectOptions}
         initialColumnOrder={layoutRow?.column_order ?? null}
         initialGroupSort={layoutRow?.group_sort ?? null}
+        assigneeOptions={assigneeOptions}
       />
     </div>
   );

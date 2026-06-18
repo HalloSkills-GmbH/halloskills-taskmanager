@@ -58,9 +58,33 @@ export function collectIdsWithChildren(forest: TaskTreeNode[]): Set<number> {
 
 export type GroupedForest = { key: string; roots: TaskTreeNode[] };
 
+const QUARTER_LABELS: Record<number, string> = {
+  1: "Q1 01.01. - 31.03.",
+  2: "Q2 01.04. - 30.06.",
+  3: "Q3 01.07. - 30.09.",
+  4: "Q4 01.10. - 31.12.",
+};
+const QUARTER_ORDER = [
+  "Q1 01.01. - 31.03.",
+  "Q2 01.04. - 30.06.",
+  "Q3 01.07. - 30.09.",
+  "Q4 01.10. - 31.12.",
+  "Kein Datum",
+];
+
+export function quarterKeyForRow(row: TaskRow): string {
+  const d = row.end_date;
+  if (!d) return "Kein Datum";
+  const month = new Date(d).getMonth() + 1;
+  if (month <= 3) return QUARTER_LABELS[1];
+  if (month <= 6) return QUARTER_LABELS[2];
+  if (month <= 9) return QUARTER_LABELS[3];
+  return QUARTER_LABELS[4];
+}
+
 export function groupForestBy(
   forest: TaskTreeNode[],
-  groupBy: "none" | "topic" | "status",
+  groupBy: "none" | "topic" | "status" | "quarter",
   groupOrder?: string[] | null,
 ): GroupedForest[] {
   if (groupBy === "none") {
@@ -68,15 +92,16 @@ export function groupForestBy(
   }
   const map = new Map<string, TaskTreeNode[]>();
   for (const node of forest) {
-    const raw =
-      groupBy === "topic"
-        ? (node.row.topic || "Ohne Thema").trim() || "Ohne Thema"
-        : (node.row.status || "Ohne Status").trim() || "Ohne Status";
+    let raw: string;
+    if (groupBy === "topic") raw = (node.row.topic || "Ohne Thema").trim() || "Ohne Thema";
+    else if (groupBy === "quarter") raw = quarterKeyForRow(node.row);
+    else raw = (node.row.status || "Ohne Status").trim() || "Ohne Status";
     if (!map.has(raw)) map.set(raw, []);
     map.get(raw)!.push(node);
   }
   const entries = [...map.entries()];
-  const order = groupOrder?.length ? groupOrder : null;
+  const defaultOrder = groupBy === "quarter" ? QUARTER_ORDER : null;
+  const order = groupOrder?.length ? groupOrder : defaultOrder;
   if (order) {
     entries.sort(([a], [b]) => {
       const ia = order.indexOf(a);

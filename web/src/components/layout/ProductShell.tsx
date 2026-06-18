@@ -895,7 +895,7 @@ export function ProductSidebar({
                       <div className="flex flex-col gap-px">
                         {deptSubLink(d.id, d.slug, base, "Übersicht")}
                         {deptSubLink(d.id, d.slug, `${base}/okrs/table`, "OKRs")}
-                        {deptSubLink(d.id, d.slug, `${base}/tasks`, "Aufgaben")}
+                        {deptSubLink(d.id, d.slug, `${base}/tasks`, "Deliverables")}
                         <div
                           className={`flex items-center gap-1.5 py-1.5 pr-3 pl-9 ${
                             inDept ? "text-[var(--sidebar-active-ink)]/80" : "text-[var(--sidebar-muted)]"
